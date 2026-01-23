@@ -1,27 +1,27 @@
-'use client'
+'use client';
 
-import { useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import { motion, AnimatePresence } from 'framer-motion'
+import { useState } from 'react';
+import { createClient } from '@/lib/supabase/client';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface AuthModalProps {
-  isOpen: boolean
-  onClose: () => void
+  isOpen: boolean;
+  onClose: () => void;
 }
 
 export function AuthModal({ isOpen, onClose }: AuthModalProps) {
-  const [isSignUp, setIsSignUp] = useState(false)
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [message, setMessage] = useState('')
-  
-  const supabase = createClient()
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    setMessage('')
+  const supabase = createClient();
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setLoading(true);
+    setMessage('');
 
     try {
       if (isSignUp) {
@@ -31,26 +31,30 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
           options: {
             emailRedirectTo: `${window.location.origin}/auth/callback`,
           },
-        })
-        
-        if (error) throw error
-        setMessage('Check your email to confirm your account')
+        });
+
+        if (error) throw error;
+        setMessage('Check your email to confirm your account');
       } else {
         const { error } = await supabase.auth.signInWithPassword({
           email,
           password,
-        })
-        
-        if (error) throw error
-        setMessage('Signed in successfully')
-        setTimeout(() => onClose(), 1500)
+        });
+
+        if (error) throw error;
+        setMessage('Signed in successfully');
+        setTimeout(() => onClose(), 1500);
       }
-    } catch (error: any) {
-      setMessage(error.message || 'An error occurred')
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        setMessage(error.message);
+      } else {
+        setMessage('An unexpected error occurred');
+      }
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   return (
     <AnimatePresence>
@@ -63,7 +67,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
             className="absolute inset-0 bg-[#2d3d34]/90 backdrop-blur-sm"
             onClick={onClose}
           />
-          
+
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -80,7 +84,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
             <div className="p-8">
               <div className="mb-8">
                 <div className="inline-flex items-center gap-2 mb-4">
-                  <div className="w-6 h-px bg-[#5b7c6f]"></div>
+                  <div className="w-6 h-px bg-[#5b7c6f]" />
                   <span className="text-[#5b7c6f] text-xs tracking-widest font-light">
                     {isSignUp ? 'CREATE ACCOUNT' : 'SIGN IN'}
                   </span>
@@ -118,7 +122,13 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
                 </div>
 
                 {message && (
-                  <p className={`text-sm font-light ${message.includes('success') || message.includes('email') ? 'text-[#5b7c6f]' : 'text-[#a85b5b]'}`}>
+                  <p
+                    className={`text-sm font-light ${
+                      message.includes('success') || message.includes('email')
+                        ? 'text-[#5b7c6f]'
+                        : 'text-[#a85b5b]'
+                    }`}
+                  >
                     {message}
                   </p>
                 )}
@@ -128,7 +138,11 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
                   disabled={loading}
                   className="w-full py-3.5 bg-[#5b7c6f] text-[#f5f3ed] font-light tracking-wide hover:bg-[#6b8c7f] transition border border-[#4a6b5e] disabled:opacity-50"
                 >
-                  {loading ? 'Please wait...' : isSignUp ? 'Create Account' : 'Sign In'}
+                  {loading
+                    ? 'Please wait...'
+                    : isSignUp
+                    ? 'Create Account'
+                    : 'Sign In'}
                 </button>
               </form>
 
@@ -137,7 +151,9 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
                   onClick={() => setIsSignUp(!isSignUp)}
                   className="text-[#5b7c6f] hover:text-[#6b8c7f] text-sm font-light tracking-wide"
                 >
-                  {isSignUp ? 'Already have an account? Sign in' : "Don't have an account? Sign up"}
+                  {isSignUp
+                    ? 'Already have an account? Sign in'
+                    : "Don't have an account? Sign up"}
                 </button>
               </div>
             </div>
@@ -145,5 +161,6 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
         </div>
       )}
     </AnimatePresence>
-  )
+  );
 }
+
