@@ -10,7 +10,7 @@ import { AuthModal } from '@/components/AuthModal';
 
 function InteractiveGlobe() {
   const meshRef = useRef<THREE.Mesh>(null);
-  
+
   useFrame(() => {
     if (meshRef.current) {
       meshRef.current.rotation.y += 0.001;
@@ -89,7 +89,6 @@ export default function Home() {
         <div className="absolute inset-0 opacity-60">
           <GlobeScene />
         </div>
-        
         <div className="absolute inset-0 bg-gradient-to-b from-[#2d3d34]/80 via-[#2d3d34]/60 to-[#2d3d34]" />
         
         <div className="relative z-10 max-w-6xl mx-auto px-6 text-center pt-24">
@@ -109,7 +108,7 @@ export default function Home() {
               <br />
               <span className="text-[#8b9d8a] font-normal">of Earth</span>
             </h1>
-            
+
             <p className="text-xl md:text-2xl text-[#d4cfc0] mb-8 max-w-3xl mx-auto font-light leading-relaxed">
               Documenting our planet, one photograph at a time
             </p>
@@ -149,7 +148,6 @@ export default function Home() {
                 <Map className="w-4 h-4" strokeWidth={1.5} />
                 Explore Archive
               </motion.a>
-
               <motion.a
                 href="/game"
                 whileHover={{ y: -2 }}
@@ -184,7 +182,6 @@ export default function Home() {
           <div className="bg-white border border-[#d4cfc0] shadow-sm overflow-hidden">
             <div className="h-[600px] relative">
               <GlobeScene />
-              
               <div className="absolute bottom-6 left-6 bg-white/95 border border-[#d4cfc0] p-4 text-sm text-[#5b7c6f] max-w-xs">
                 <div className="flex items-center gap-2 mb-3">
                   <MapPin className="w-4 h-4" strokeWidth={1.5} />
@@ -223,7 +220,6 @@ export default function Home() {
               <div className="w-8 h-px bg-[#8b9d8a]"></div>
               <span className="text-[#8b9d8a] text-xs tracking-widest font-light">PURPOSE</span>
             </div>
-            
             <h2 className="text-4xl md:text-5xl font-light text-[#f5f3ed] mb-8 tracking-wide leading-tight">
               Building a record for the next century
             </h2>
@@ -235,20 +231,17 @@ export default function Home() {
               satellites or sensors alone, but through the lens of human observation. Each 
               photograph becomes part of a permanent, accessible record.
             </p>
-
             <p>
               Over time, this archive becomes invaluable: tracking coastal erosion, urban 
               growth, habitat change, climate patterns. Researchers, planners, historians, 
               and communities gain access to ground-truth observations spanning decades.
             </p>
-
             <div className="border-l-2 border-[#5b7c6f] pl-6 my-12">
               <p className="text-xl text-[#8b9d8a] font-light italic">
                 "The best time to start documenting Earth was fifty years ago. 
                 The second best time is today."
               </p>
             </div>
-
             <p>
               Contributors maintain full attribution. Images are geotagged and timestamped 
               to archival standards. Privacy is respected. The mission is simple: preserve 
@@ -317,7 +310,6 @@ export default function Home() {
           <p className="text-xl text-[#d4cfc0] mb-12 font-light leading-relaxed">
             Join the global network documenting Earth—one photograph, one place, one moment
           </p>
-          
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <button 
               onClick={() => setShowAuthModal(true)}
