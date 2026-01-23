@@ -67,7 +67,7 @@ export default function GamePage() {
         className="pt-[73px] h-screen"
       >
         <iframe
-          src="http://localhost:3000"
+          src="https://game.lithicearth.com"
           className="w-full h-full border-0"
           title="LithicEarth Game"
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
