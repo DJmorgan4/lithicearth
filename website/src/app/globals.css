@@ -1,10 +1,14 @@
 @import "tailwindcss";
 
+/* ================================
+   Root theme variables
+================================ */
 :root {
-  --background: #020617;
-  --foreground: #f8fafc;
+  --background: #f5f3ed; /* archival paper */
+  --foreground: #2d3d34; /* deep green text */
 }
 
+/* Tailwind v4 theme tokens */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -12,6 +16,7 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/* Optional dark mode support (future-proof) */
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #020617;
@@ -19,39 +24,47 @@
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
-}
-
-/* Smooth scrolling */
+/* ================================
+   Base styles
+================================ */
 html {
   scroll-behavior: smooth;
 }
 
-/* Custom scrollbar */
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ================================
+   Scrollbar styling
+================================ */
 ::-webkit-scrollbar {
   width: 10px;
 }
 
 ::-webkit-scrollbar-track {
-  background: rgb(2 6 23);
+  background: #e8e6dd;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgb(30 41 59);
-  border-radius: 5px;
+  background: #9a9589;
+  border-radius: 6px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgb(51 65 85);
+  background: #7a8a7d;
 }
 
-/* Custom animations */
+/* ================================
+   Animations
+================================ */
 @keyframes float {
   0%, 100% {
-    transform: translateY(0px);
+    transform: translateY(0);
   }
   50% {
     transform: translateY(-20px);
@@ -60,10 +73,10 @@ html {
 
 @keyframes glow-pulse {
   0%, 100% {
-    box-shadow: 0 0 20px rgba(6, 182, 212, 0.3);
+    box-shadow: 0 0 20px rgba(91, 124, 111, 0.25);
   }
   50% {
-    box-shadow: 0 0 40px rgba(6, 182, 212, 0.6);
+    box-shadow: 0 0 40px rgba(91, 124, 111, 0.45);
   }
 }
 
@@ -76,7 +89,9 @@ html {
   }
 }
 
-/* Utility classes */
+/* ================================
+   Utility classes
+================================ */
 .animate-float {
   animation: float 6s ease-in-out infinite;
 }
@@ -94,45 +109,37 @@ html {
   text-wrap: balance;
 }
 
-/* Glow effects */
-.glow-cyan {
-  box-shadow: 0 0 20px rgba(6, 182, 212, 0.3);
+/* ================================
+   Glow helpers
+================================ */
+.glow-green {
+  box-shadow: 0 0 20px rgba(91, 124, 111, 0.35);
 }
 
-.glow-blue {
-  box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+.glow-soft {
+  box-shadow: 0 0 30px rgba(139, 157, 138, 0.25);
 }
 
-.glow-purple {
-  box-shadow: 0 0 20px rgba(168, 85, 247, 0.3);
-}
-
-/* Backdrop blur fallback */
+/* ================================
+   Backdrop blur fallback
+================================ */
 .backdrop-blur-fallback {
-  background-color: rgba(2, 6, 23, 0.8);
+  background-color: rgba(245, 243, 237, 0.85);
 }
 
 @supports (backdrop-filter: blur(10px)) {
   .backdrop-blur-fallback {
-    background-color: rgba(2, 6, 23, 0.5);
+    background-color: rgba(245, 243, 237, 0.6);
     backdrop-filter: blur(10px);
   }
 }
 
-/* Prevent scroll anchoring during animations */
-* {
-  scroll-behavior: smooth;
-}
-
-/* Improve text rendering */
-body {
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-/* Fix for canvas not filling container */
+/* ================================
+   Canvas fixes (Three.js)
+================================ */
 canvas {
   display: block;
   width: 100%;
   height: 100%;
 }
+
