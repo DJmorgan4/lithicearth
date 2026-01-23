@@ -1,4 +1,6 @@
-'use client'
+'use client';
+
+import Link from 'next/link';
 
 export default function GamePage() {
   return (
@@ -10,13 +12,15 @@ export default function GamePage() {
         <p className="text-xl text-slate-400 mb-8">
           The ancient world awaits...
         </p>
-        <a 
+
+        <Link
           href="/"
           className="inline-block px-8 py-4 bg-cyan-500 text-white rounded-full font-semibold hover:bg-cyan-400 transition"
         >
           ← Back to Home
-        </a>
+        </Link>
       </div>
     </div>
-  )
+  );
 }
+

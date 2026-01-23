@@ -4,7 +4,7 @@ import { Suspense, useRef, useState } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Sphere, MeshDistortMaterial, Stars } from '@react-three/drei';
 import { motion } from 'framer-motion';
-import { Globe2, MapPin, Camera, Users, ArrowRight, Archive, Clock, Map } from 'lucide-react';
+import { Globe2, MapPin, Camera, Users, Archive, Clock, Map } from 'lucide-react';
 import * as THREE from 'three';
 import { AuthModal } from '@/components/AuthModal';
 
@@ -71,7 +71,7 @@ export default function Home() {
             <a href="#contribute" className="text-sm text-[#d4cfc0] hover:text-[#f5f3ed] transition font-light tracking-wide">
               Contribute
             </a>
-            <button 
+            <button
               onClick={() => setShowAuthModal(true)}
               className="px-5 py-2 bg-[#5b7c6f] text-[#f5f3ed] text-sm font-light tracking-wide hover:bg-[#6b8c7f] transition border border-[#4a6b5e]"
             >
@@ -90,12 +90,12 @@ export default function Home() {
           <GlobeScene />
         </div>
         <div className="absolute inset-0 bg-gradient-to-b from-[#2d3d34]/80 via-[#2d3d34]/60 to-[#2d3d34]" />
-        
+
         <div className="relative z-10 max-w-6xl mx-auto px-6 text-center pt-24">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 1.2, ease: "easeOut" }}
+            transition={{ duration: 1.2, ease: 'easeOut' }}
           >
             {/* Archival badge */}
             <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-[#5b7c6f]/20 border border-[#8b9d8a]/30 mb-12">
@@ -114,9 +114,8 @@ export default function Home() {
             </p>
 
             <p className="text-base text-[#b5b0a0] mb-16 max-w-2xl mx-auto font-light leading-relaxed">
-              LithicEarth preserves the human experience of place—a continuous record 
-              built by people, for the future. Every image anchors a moment. Together, 
-              they become something larger: a living map of change, memory, and stewardship.
+              LithicEarth preserves the human experience of place—a continuous record built by people, for the future. Every image anchors a moment. Together, they become something
+              larger: a living map of change, memory, and stewardship.
             </p>
 
             {/* Simple stats */}
@@ -174,8 +173,7 @@ export default function Home() {
               Explore by Place
             </h2>
             <p className="text-lg text-[#5b7c6f] max-w-2xl font-light leading-relaxed">
-              Navigate Earth through the eyes of its documentarians—every photograph 
-              georeferenced, timestamped, preserved.
+              Navigate Earth through the eyes of its documentarians—every photograph georeferenced, timestamped, preserved.
             </p>
           </div>
 
@@ -204,9 +202,7 @@ export default function Home() {
                   </div>
                 ))}
               </div>
-              <p className="text-center text-[#9a9589] text-sm mt-6 font-light">
-                Archive begins with first contribution
-              </p>
+              <p className="text-center text-[#9a9589] text-sm mt-6 font-light">Archive begins with first contribution</p>
             </div>
           </div>
         </div>
@@ -227,25 +223,21 @@ export default function Home() {
 
           <div className="space-y-6 text-[#d4cfc0] font-light leading-relaxed text-lg">
             <p>
-              LithicEarth documents the physical world as experienced by people—not through 
-              satellites or sensors alone, but through the lens of human observation. Each 
-              photograph becomes part of a permanent, accessible record.
+              LithicEarth documents the physical world as experienced by people—not through satellites or sensors alone, but through the lens of human observation. Each photograph
+              becomes part of a permanent, accessible record.
             </p>
             <p>
-              Over time, this archive becomes invaluable: tracking coastal erosion, urban 
-              growth, habitat change, climate patterns. Researchers, planners, historians, 
-              and communities gain access to ground-truth observations spanning decades.
+              Over time, this archive becomes invaluable: tracking coastal erosion, urban growth, habitat change, climate patterns. Researchers, planners, historians, and
+              communities gain access to ground-truth observations spanning decades.
             </p>
             <div className="border-l-2 border-[#5b7c6f] pl-6 my-12">
               <p className="text-xl text-[#8b9d8a] font-light italic">
-                "The best time to start documenting Earth was fifty years ago. 
-                The second best time is today."
+                &quot;The best time to start documenting Earth was fifty years ago. The second best time is today.&quot;
               </p>
             </div>
             <p>
-              Contributors maintain full attribution. Images are geotagged and timestamped 
-              to archival standards. Privacy is respected. The mission is simple: preserve 
-              what we see, for those who come after.
+              Contributors maintain full attribution. Images are geotagged and timestamped to archival standards. Privacy is respected. The mission is simple: preserve what we see,
+              for those who come after.
             </p>
           </div>
         </div>
@@ -259,9 +251,7 @@ export default function Home() {
               <div className="w-8 h-px bg-[#5b7c6f]"></div>
               <span className="text-[#5b7c6f] text-xs tracking-widest font-light">PRINCIPLES</span>
             </div>
-            <h2 className="text-4xl font-light text-[#2d3d34] tracking-wide">
-              What guides this work
-            </h2>
+            <h2 className="text-4xl font-light text-[#2d3d34] tracking-wide">What guides this work</h2>
           </div>
 
           <div className="grid md:grid-cols-3 gap-8">
@@ -269,26 +259,22 @@ export default function Home() {
               {
                 icon: Clock,
                 title: 'Long-term thinking',
-                description: 'Building an archive meant to last generations, not quarters. Every decision considers decades ahead.'
+                description: 'Building an archive meant to last generations, not quarters. Every decision considers decades ahead.',
               },
               {
                 icon: Users,
                 title: 'Human-centered',
-                description: 'This record exists because people care. Contributors own their work, communities own their stories.'
+                description: 'This record exists because people care. Contributors own their work, communities own their stories.',
               },
               {
                 icon: Archive,
                 title: 'Rigorous standards',
-                description: 'Metadata integrity, geographic precision, and ethical stewardship from day one.'
-              }
+                description: 'Metadata integrity, geographic precision, and ethical stewardship from day one.',
+              },
             ].map((value) => {
               const Icon = value.icon;
               return (
-                <motion.div
-                  key={value.title}
-                  whileHover={{ y: -4 }}
-                  className="bg-white border border-[#d4cfc0] p-8 transition-all"
-                >
+                <motion.div key={value.title} whileHover={{ y: -4 }} className="bg-white border border-[#d4cfc0] p-8 transition-all">
                   <div className="w-10 h-10 border border-[#d4cfc0] flex items-center justify-center mb-6">
                     <Icon className="w-5 h-5 text-[#5b7c6f]" strokeWidth={1.5} />
                   </div>
@@ -304,14 +290,12 @@ export default function Home() {
       {/* Contribute CTA - Understated */}
       <section id="contribute" className="relative py-24 px-6 bg-[#5b7c6f]">
         <div className="max-w-4xl mx-auto text-center">
-          <h2 className="text-4xl md:text-5xl font-light text-[#f5f3ed] mb-6 tracking-wide">
-            Start contributing today
-          </h2>
+          <h2 className="text-4xl md:text-5xl font-light text-[#f5f3ed] mb-6 tracking-wide">Start contributing today</h2>
           <p className="text-xl text-[#d4cfc0] mb-12 font-light leading-relaxed">
             Join the global network documenting Earth—one photograph, one place, one moment
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <button 
+            <button
               onClick={() => setShowAuthModal(true)}
               className="px-10 py-4 bg-[#f5f3ed] text-[#2d3d34] font-light tracking-wide hover:bg-white transition border border-[#e8e6dd]"
             >
@@ -333,10 +317,18 @@ export default function Home() {
               <span className="text-sm text-[#d4cfc0] font-light tracking-wide">LITHIC EARTH</span>
             </div>
             <div className="flex gap-8 text-sm text-[#b5b0a0] font-light">
-              <a href="#" className="hover:text-[#d4cfc0] transition">Archive</a>
-              <a href="#" className="hover:text-[#d4cfc0] transition">About</a>
-              <a href="#" className="hover:text-[#d4cfc0] transition">Terms</a>
-              <a href="#" className="hover:text-[#d4cfc0] transition">Privacy</a>
+              <a href="#" className="hover:text-[#d4cfc0] transition">
+                Archive
+              </a>
+              <a href="#" className="hover:text-[#d4cfc0] transition">
+                About
+              </a>
+              <a href="#" className="hover:text-[#d4cfc0] transition">
+                Terms
+              </a>
+              <a href="#" className="hover:text-[#d4cfc0] transition">
+                Privacy
+              </a>
             </div>
           </div>
           <div className="text-center text-[#7a8a7d] text-xs font-light">
@@ -348,3 +340,4 @@ export default function Home() {
     </main>
   );
 }
+
