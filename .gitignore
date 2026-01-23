@@ -44,3 +44,4 @@ apps/
 # Build files
 website/.next/
 website/node_modules/
+website/build-output.txt
