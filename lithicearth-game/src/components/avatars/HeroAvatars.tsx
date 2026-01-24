@@ -12,7 +12,7 @@ function SvgWrap({
 }: React.PropsWithChildren<AvatarProps>) {
   return (
     <svg
-      className={className}
+      className={`avatar-idle ${className ?? ""}`}
       width={size}
       height={size}
       viewBox="0 0 240 240"
@@ -88,8 +88,8 @@ function ToyBase({
 
       {/* eyes */}
       <g>
-        <circle cx="104" cy="98" r="8" fill="#111827" />
-        <circle cx="136" cy="98" r="8" fill="#111827" />
+        <circle cx="104" cy="98" r="8" fill="#111827" className="avatar-eye" />
+        <circle cx="136" cy="98" r="8" fill="#111827" className="avatar-eye" />
         <circle cx="101" cy="95" r="2.6" fill="white" opacity="0.9" />
         <circle cx="133" cy="95" r="2.6" fill="white" opacity="0.9" />
       </g>

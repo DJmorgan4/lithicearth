@@ -30,3 +30,5 @@ export const heroes = [
   },
 ] as const;
 
+
+export const getAllHeroes = () => heroes;

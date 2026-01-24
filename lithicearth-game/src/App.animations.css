@@ -1,0 +1,265 @@
+@keyframes idleFloat {
+  0%   { transform: translateY(0); }
+  50%  { transform: translateY(-6px); }
+  100% { transform: translateY(0); }
+}
+
+@keyframes blink {
+  0%, 92%, 100% { transform: scaleY(1); }
+  94%, 96%      { transform: scaleY(0.1); }
+}
+
+.avatar-idle {
+  animation: idleFloat 2.8s ease-in-out infinite;
+}
+
+.avatar-eye {
+  transform-origin: center;
+  animation: blink 6s infinite;
+}
+
+/* toy tilt */
+.hero-card {
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+.hero-card:hover {
+  transform: translateY(-10px) rotateX(4deg) rotateY(-4deg);
+}
+
+.hero-card:active {
+  transform: translateY(-6px) rotateX(2deg) rotateY(-2deg) scale(0.99);
+}
+
+/* selection juice */
+.hero-card.hero-selected {
+  transform: translateY(-14px) scale(1.03) rotateX(6deg) rotateY(-6deg) !important;
+  box-shadow: 0 40px 120px rgba(0,0,0,0.75) !important;
+}
+
+.hero-card.hero-dimmed {
+  opacity: 0.18;
+  transform: translateY(18px) scale(0.98);
+  filter: blur(0.2px) saturate(0.75);
+  pointer-events: none;
+}
+
+.hero-card.hero-dimmed .avatar-idle {
+  animation-play-state: paused;
+}
+
+/* open-world prototype layer */
+.world {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.world-grid {
+  position: absolute;
+  inset: -200%;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.06) 1px, transparent 1px);
+  background-size: 60px 60px;
+  opacity: 0.25;
+  transform: translate3d(0,0,0);
+  will-change: transform;
+}
+
+.player {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 18px 45px rgba(0,0,0,0.55);
+  border: 1px solid rgba(255,255,255,0.25);
+}
+
+.poi {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.22);
+  box-shadow: 0 16px 40px rgba(0,0,0,0.55);
+  cursor: pointer;
+}
+
+.hud {
+  position: fixed;
+  bottom: 18px;
+  right: 18px;
+  z-index: 60;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(10,10,24,0.55);
+  border: 1px solid rgba(255,255,255,0.12);
+  backdrop-filter: blur(10px);
+  color: rgba(255,255,255,0.9);
+  font-weight: 800;
+  pointer-events: none;
+}
+
+/* --- hero truth overlays + they-knew mode --- */
+@keyframes goldPulse {
+  0% { filter: saturate(1) contrast(1); }
+  50% { filter: saturate(1.2) contrast(1.05); }
+  100% { filter: saturate(1) contrast(1); }
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.truth-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  opacity: 0.85;
+}
+
+.truth-overlay-ui {
+  position: fixed;
+  left: 18px;
+  bottom: 86px;
+  z-index: 90;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(10,10,24,0.55);
+  border: 1px solid rgba(255,255,255,0.12);
+  backdrop-filter: blur(10px);
+  color: rgba(255,255,255,0.9);
+  font-weight: 900;
+  animation: fadeInUp 220ms ease-out both;
+  pointer-events: auto;
+}
+
+.they-knew {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  background: radial-gradient(circle at 30% 20%, rgba(255,215,0,0.18), transparent 55%),
+              radial-gradient(circle at 70% 60%, rgba(255,255,255,0.10), transparent 55%),
+              rgba(0,0,0,0.70);
+  backdrop-filter: blur(8px);
+  animation: fadeInUp 260ms ease-out both;
+}
+
+.they-knew-gold {
+  animation: goldPulse 2.8s ease-in-out infinite;
+  filter: sepia(0.65) hue-rotate(-15deg) saturate(1.35);
+}
+
+.lore-panel {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(860px, calc(100vw - 36px));
+  transform: translate(-50%, -50%);
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(10,10,24,0.72);
+  box-shadow: 0 30px 120px rgba(0,0,0,0.75);
+}
+
+.lore-title {
+  font-size: 2.3rem;
+  font-weight: 1000;
+  letter-spacing: 1px;
+  margin-bottom: 8px;
+}
+
+.lore-quote {
+  font-size: 1.2rem;
+  color: rgba(255,255,255,0.85);
+  margin-bottom: 14px;
+}
+
+.redacted {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  background: rgba(255,255,255,0.06);
+  border: 1px dashed rgba(255,255,255,0.16);
+  border-radius: 14px;
+  padding: 12px;
+  color: rgba(255,255,255,0.82);
+  line-height: 1.45;
+}
+
+.redact {
+  display: inline-block;
+  padding: 0 6px;
+  border-radius: 8px;
+  background: rgba(0,0,0,0.75);
+  color: rgba(0,0,0,0.0);
+  text-shadow: none;
+  user-select: none;
+}
+
+
+@keyframes microShake {
+  0% { transform: translate3d(0,0,0); }
+  20% { transform: translate3d(-1px, 1px, 0); }
+  40% { transform: translate3d(1px, -1px, 0); }
+  60% { transform: translate3d(-1px, 0px, 0); }
+  80% { transform: translate3d(1px, 1px, 0); }
+  100% { transform: translate3d(0,0,0); }
+}
+
+@keyframes glitchFlicker {
+  0%, 100% { opacity: 1; filter: none; }
+  92% { opacity: 0.92; filter: contrast(1.1) saturate(1.15); }
+  94% { opacity: 0.65; filter: contrast(1.25) saturate(1.35); }
+  96% { opacity: 0.95; filter: contrast(1.1) saturate(1.2); }
+}
+
+@keyframes scanline {
+  0% { transform: translateY(-20%); opacity: 0.0; }
+  15% { opacity: 0.35; }
+  55% { opacity: 0.25; }
+  100% { transform: translateY(120%); opacity: 0.0; }
+}
+
+.they-knew .lore-title {
+  position: relative;
+  text-shadow: 0 0 18px rgba(255,215,0,0.22);
+  animation: glitchFlicker 3.2s infinite;
+}
+
+.they-knew::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, transparent, rgba(255,255,255,0.06), transparent);
+  animation: scanline 2.6s linear infinite;
+  pointer-events: none;
+}
+
+.they-knew-shake {
+  animation: microShake 320ms ease-in-out 1;
+}
+
+@keyframes pulseRing {
+  0% { transform: translate(-50%, -50%) scale(0.9); opacity: 0.55; }
+  70% { transform: translate(-50%, -50%) scale(1.55); opacity: 0.0; }
+  100% { transform: translate(-50%, -50%) scale(1.55); opacity: 0.0; }
+}
+
+.player-ring {
+  position: absolute;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  border: 1px solid rgba(255,255,255,0.25);
+  box-shadow: 0 0 30px rgba(120,200,255,0.20);
+  animation: pulseRing 1.15s ease-out infinite;
+  pointer-events: none;
+}

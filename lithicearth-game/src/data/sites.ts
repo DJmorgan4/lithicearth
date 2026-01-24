@@ -1,4 +1,4 @@
-import { AncientSite } from '../types';
+import type { AncientSite } from '../types';
 
 export const ANCIENT_SITES: AncientSite[] = [
   {
