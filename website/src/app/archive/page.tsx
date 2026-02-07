@@ -1,335 +1,666 @@
-'use client';
+"use client";
 
-import { useState, useRef, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { Camera, MapPin, Clock, Calendar, Search, Filter, Sparkles, Trophy, Target, Brain } from 'lucide-react';
-import { Navigation } from '@/components/Navigation';
-import { Footer } from '@/components/Footer';
-import { AuthModal } from '@/components/AuthModal';
-import dynamic from 'next/dynamic';
+import { useEffect, useRef, useState } from 'react';
+import Script from 'next/script';
+import { createClient } from '@supabase/supabase-js';
 
-// Dynamic import for the 3D Globe to avoid SSR issues
-const InteractiveGlobe = dynamic(() => import('@/components/InteractiveGlobe'), { ssr: false });
+declare global {
+  interface Window {
+    Cesium: any;
+  }
+}
+
+interface ArchiveImage {
+  id: string;
+  lat: number;
+  lon: number;
+  image_url: string;
+  thumbnail_url?: string;
+  uploaded_at: string;
+  uploader_name: string;
+  title: string;
+  description: string;
+  category: 'archaeological' | 'environmental' | 'geological' | 'cultural' | 'wildlife' | 'urban';
+  location_name: string;
+  elevation?: number;
+  tags?: string[];
+}
 
 export default function ArchivePage() {
-  const [showAuthModal, setShowAuthModal] = useState(false);
-  const [selectedYear, setSelectedYear] = useState(2026);
-  const [viewMode, setViewMode] = useState<'realtime' | 'timelapse'>('realtime');
-  const [gameExpanded, setGameExpanded] = useState(false);
-  
-  // Daily challenge state
-  const [currentQuestion, setCurrentQuestion] = useState(0);
-  const [score, setScore] = useState(0);
-  const [hasPlayed, setHasPlayed] = useState(false);
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+  const cesiumContainerRef = useRef<HTMLDivElement>(null);
+  const viewerRef = useRef<any>(null);
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [showLoading, setShowLoading] = useState(true);
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [archiveImages, setArchiveImages] = useState<ArchiveImage[]>([]);
+  const [selectedImage, setSelectedImage] = useState<ArchiveImage | null>(null);
+  const [stats, setStats] = useState({
+    totalImages: 0,
+    todayUploads: 0,
+    activeContributors: 0,
+    coords: '--'
+  });
 
-  const dailyChallenge = {
-    date: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
-    questions: [
-      {
-        question: "What percentage of Earth's surface is covered by water?",
-        options: ["61%", "71%", "81%", "91%"],
-        correct: 1,
-        category: "Geography"
-      },
-      {
-        question: "Which biome stores the most carbon per square meter?",
-        options: ["Rainforest", "Tundra", "Peatlands", "Grasslands"],
-        correct: 2,
-        category: "Ecology"
-      },
-      {
-        question: "The Great Barrier Reef can be seen from space. True or false?",
-        options: ["True", "False"],
-        correct: 0,
-        category: "Marine Science"
-      }
-    ]
+  const [siteStats, setSiteStats] = useState<any[]>([]);
+
+  useEffect(() => {
+    loadArchiveImages();
+    loadStats();
+    
+    const channel = supabase
+      .channel('archive_images_changes')
+      .on('postgres_changes', 
+        { event: '*', schema: 'public', table: 'archive_images' }, 
+        () => {
+          loadArchiveImages();
+          loadStats();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isLoaded && cesiumContainerRef.current && !viewerRef.current) {
+      initializeCesium();
+    }
+  }, [isLoaded]);
+
+  useEffect(() => {
+    if (viewerRef.current && archiveImages.length > 0) {
+      addImageMarkers();
+    }
+  }, [archiveImages]);
+
+  const loadArchiveImages = async () => {
+    const { data, error } = await supabase
+      .from('archive_images')
+      .select('*')
+      .order('uploaded_at', { ascending: false });
+
+    if (data && !error) {
+      setArchiveImages(data);
+      aggregateSiteStats(data);
+    }
   };
 
-  const handleAnswer = (answerIndex: number) => {
-    if (answerIndex === dailyChallenge.questions[currentQuestion].correct) {
-      setScore(score + 1);
-    }
+  const loadStats = async () => {
+    const { count: totalCount } = await supabase
+      .from('archive_images')
+      .select('*', { count: 'exact', head: true });
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const { count: todayCount } = await supabase
+      .from('archive_images')
+      .select('*', { count: 'exact', head: true })
+      .gte('uploaded_at', today.toISOString());
+
+    const { data: contributors } = await supabase
+      .from('archive_images')
+      .select('uploader_name');
     
-    if (currentQuestion < dailyChallenge.questions.length - 1) {
-      setCurrentQuestion(currentQuestion + 1);
-    } else {
-      setHasPlayed(true);
+    const uniqueContributors = new Set(contributors?.map((c: { uploader_name: string }) => c.uploader_name) || []).size;
+
+    setStats(prev => ({
+      ...prev,
+      totalImages: totalCount || 0,
+      todayUploads: todayCount || 0,
+      activeContributors: uniqueContributors
+    }));
+  };
+
+  const aggregateSiteStats = (images: ArchiveImage[]) => {
+    const siteMap = new Map<string, {
+      name: string;
+      lat: number;
+      lon: number;
+      images: number;
+      category: string;
+      lastUpload: string;
+    }>();
+
+    images.forEach(img => {
+      const key = img.location_name || `${img.lat.toFixed(2)},${img.lon.toFixed(2)}`;
+      
+      if (siteMap.has(key)) {
+        const site = siteMap.get(key)!;
+        site.images++;
+        if (new Date(img.uploaded_at) > new Date(site.lastUpload)) {
+          site.lastUpload = img.uploaded_at;
+        }
+      } else {
+        siteMap.set(key, {
+          name: img.location_name || 'Unknown Location',
+          lat: img.lat,
+          lon: img.lon,
+          images: 1,
+          category: img.category,
+          lastUpload: img.uploaded_at
+        });
+      }
+    });
+
+    setSiteStats(Array.from(siteMap.values()));
+  };
+
+  const getTimeAgo = (dateString: string) => {
+    const now = new Date();
+    const past = new Date(dateString);
+    const diffMs = now.getTime() - past.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    return `${diffDays}d ago`;
+  };
+
+  const createImageMarker = (category: string) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 32;
+    canvas.height = 32;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return '';
+    
+    const colors: { [key: string]: string } = {
+      archaeological: '#D4AF37',
+      environmental: '#2E8B57',
+      geological: '#8B4513',
+      cultural: '#4682B4',
+      wildlife: '#228B22',
+      urban: '#708090'
+    };
+    
+    const color = colors[category] || '#FFFFFF';
+    
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(16, 16, 6, 0, Math.PI * 2);
+    ctx.fill();
+    
+    ctx.strokeStyle = `${color}88`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(16, 16, 10, 0, Math.PI * 2);
+    ctx.stroke();
+    
+    return canvas.toDataURL();
+  };
+
+  const initializeCesium = async () => {
+    if (!window.Cesium || !cesiumContainerRef.current) return;
+
+    const Cesium = window.Cesium;
+    Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJjMGRjY2MwNC1hZjEyLTQzNzktOTJiOS0zN2ZkZGMyMTdlMWEiLCJpZCI6Mzg0NTg4LCJpYXQiOjE3Njk2NDE5ODh9.UGCST0fw1fP3bbzxSwNMKxkerweXJKeVrnRhfPYHAD8';
+
+    try {
+      const viewer = new Cesium.Viewer(cesiumContainerRef.current, {
+        terrainProvider: await Cesium.createWorldTerrainAsync(),
+        imageryProvider: new Cesium.IonImageryProvider({ assetId: 2 }),
+        baseLayerPicker: false,
+        geocoder: false,
+        homeButton: false,
+        sceneModePicker: false,
+        timeline: false,
+        navigationHelpButton: false,
+        animation: false,
+        fullscreenButton: false,
+        vrButton: false,
+        infoBox: true,
+        selectionIndicator: true,
+        shadows: false,
+        shouldAnimate: true
+      });
+
+      viewerRef.current = viewer;
+
+      viewer.scene.globe.enableLighting = false;
+      viewer.scene.skyAtmosphere.hueShift = 0;
+      viewer.scene.skyAtmosphere.saturationShift = 0;
+      viewer.scene.skyAtmosphere.brightnessShift = 0;
+
+      viewer.cesiumWidget.creditContainer.style.display = 'none';
+
+      viewer.camera.moveEnd.addEventListener(() => {
+        const cameraPosition = viewer.camera.positionCartographic;
+        const lat = Cesium.Math.toDegrees(cameraPosition.latitude).toFixed(4);
+        const lon = Cesium.Math.toDegrees(cameraPosition.longitude).toFixed(4);
+        
+        setStats(prev => ({
+          ...prev,
+          coords: `${lat}°, ${lon}°`
+        }));
+      });
+
+      await viewer.camera.flyTo({
+        destination: Cesium.Cartesian3.fromDegrees(0, 20, 20000000),
+        orientation: {
+          heading: 0,
+          pitch: Cesium.Math.toRadians(-45),
+          roll: 0
+        },
+        duration: 0
+      });
+
+      setTimeout(() => setShowLoading(false), 2000);
+
+    } catch (error) {
+      console.error('Error initializing Cesium:', error);
+    }
+  };
+
+  const addImageMarkers = () => {
+    if (!viewerRef.current || !window.Cesium) return;
+    
+    const viewer = viewerRef.current;
+    const Cesium = window.Cesium;
+
+    viewer.entities.removeAll();
+
+    archiveImages.forEach(image => {
+      const markerImage = createImageMarker(image.category);
+      
+      viewer.entities.add({
+        id: image.id,
+        position: Cesium.Cartesian3.fromDegrees(image.lon, image.lat, image.elevation || 100),
+        name: image.title,
+        description: `
+          <div style="font-family: system-ui, sans-serif; padding: 20px; max-width: 400px;">
+            <h3 style="margin: 0 0 15px 0; font-size: 16px; font-weight: 500; color: #000;">${image.title}</h3>
+            <img src="${image.image_url}" style="width: 100%; height: 250px; object-fit: cover; margin-bottom: 15px;" />
+            <p style="margin: 8px 0; color: #666; font-size: 14px;"><strong>Location:</strong> ${image.location_name}</p>
+            <p style="margin: 8px 0; color: #666; font-size: 14px;"><strong>Category:</strong> ${image.category}</p>
+            <p style="margin: 8px 0; color: #666; font-size: 14px;"><strong>By:</strong> ${image.uploader_name}</p>
+            <p style="margin: 8px 0; color: #666; font-size: 14px;"><strong>Date:</strong> ${new Date(image.uploaded_at).toLocaleDateString()}</p>
+            ${image.description ? `<p style="margin: 12px 0 0 0; color: #444; font-size: 14px; line-height: 1.5;">${image.description}</p>` : ''}
+          </div>
+        `,
+        billboard: {
+          image: markerImage,
+          scale: 1.0,
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          heightReference: Cesium.HeightReference.CLAMP_TO_GROUND
+        }
+      });
+    });
+  };
+
+  const flyToSite = (lat: number, lon: number) => {
+    if (!viewerRef.current || !window.Cesium) return;
+    const Cesium = window.Cesium;
+    viewerRef.current.camera.flyTo({
+      destination: Cesium.Cartesian3.fromDegrees(lon, lat, 5000),
+      duration: 2
+    });
+  };
+
+  const flyToImage = (image: ArchiveImage) => {
+    if (!viewerRef.current || !window.Cesium) return;
+    const Cesium = window.Cesium;
+    
+    setSelectedImage(image);
+    
+    viewerRef.current.camera.flyTo({
+      destination: Cesium.Cartesian3.fromDegrees(image.lon, image.lat, 1000),
+      duration: 2
+    });
+
+    const entity = viewerRef.current.entities.getById(image.id);
+    if (entity) {
+      viewerRef.current.selectedEntity = entity;
     }
   };
 
   return (
-    <main className="min-h-screen bg-[#0a0f0d]">
-      <Navigation onSignInClick={() => setShowAuthModal(true)} />
-      <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />
+    <>
+      <Script
+        src="https://cesium.com/downloads/cesiumjs/releases/1.112/Build/Cesium/Cesium.js"
+        onLoad={() => setIsLoaded(true)}
+      />
+      <link
+        rel="stylesheet"
+        href="https://cesium.com/downloads/cesiumjs/releases/1.112/Build/Cesium/Widgets/widgets.css"
+      />
 
-      <div className="pt-20 min-h-screen">
-        {/* Header */}
-        <div className="max-w-[1800px] mx-auto px-6 py-12">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-          >
-            <div className="inline-flex items-center gap-2 mb-6 px-4 py-2 bg-[#5b7c6f]/10 border border-[#5b7c6f]/30 rounded-full">
-              <Camera className="w-4 h-4 text-[#8b9d8a]" strokeWidth={1.5} />
-              <span className="text-[#d4cfc0] text-sm font-light tracking-wide">THE ARCHIVE</span>
+      <div className="relative w-full h-screen overflow-hidden bg-black">
+        {showLoading && (
+          <div className="fixed inset-0 z-[10000] flex flex-col items-center justify-center bg-black">
+            <div className="text-3xl font-light text-white/90 mb-4 tracking-tight">
+              Loading Archive
             </div>
-            <h1 className="text-5xl md:text-6xl font-extralight text-white mb-4 tracking-tight">
-              Explore Earth
-              <span className="text-[#8b9d8a]"> Through Time</span>
-            </h1>
-            <p className="text-xl text-[#b5b0a0] font-light max-w-2xl">
-              Navigate our planet through an interactive 3D globe. Watch landscapes evolve, discover hidden stories, track environmental changes.
-            </p>
-          </motion.div>
-
-          {/* Controls Bar */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.2 }}
-            className="mt-8 flex flex-wrap items-center gap-4"
-          >
-            {/* View Mode Toggle */}
-            <div className="flex items-center gap-2 bg-[#1a2820]/60 border border-[#5b7c6f]/30 backdrop-blur-xl rounded-full p-1">
-              <button
-                onClick={() => setViewMode('realtime')}
-                className={`px-6 py-2 rounded-full text-sm font-light transition-all ${
-                  viewMode === 'realtime'
-                    ? 'bg-[#5b7c6f] text-white'
-                    : 'text-[#b5b0a0] hover:text-white'
-                }`}
-              >
-                Real-time
-              </button>
-              <button
-                onClick={() => setViewMode('timelapse')}
-                className={`px-6 py-2 rounded-full text-sm font-light transition-all ${
-                  viewMode === 'timelapse'
-                    ? 'bg-[#5b7c6f] text-white'
-                    : 'text-[#b5b0a0] hover:text-white'
-                }`}
-              >
-                Time-lapse
-              </button>
+            <div className="w-48 h-px bg-white/20">
+              <div className="h-full bg-white/60 animate-pulse" style={{ width: '40%' }} />
             </div>
+          </div>
+        )}
 
-            {/* Year Slider (for timelapse) */}
-            {viewMode === 'timelapse' && (
-              <div className="flex items-center gap-4 bg-[#1a2820]/60 border border-[#5b7c6f]/30 backdrop-blur-xl rounded-full px-6 py-3">
-                <Calendar className="w-4 h-4 text-[#8b9d8a]" strokeWidth={1.5} />
-                <input
-                  type="range"
-                  min="2000"
-                  max="2026"
-                  value={selectedYear}
-                  onChange={(e) => setSelectedYear(Number(e.target.value))}
-                  className="w-48 accent-[#5b7c6f]"
-                />
-                <span className="text-white font-light min-w-[60px]">{selectedYear}</span>
+        {showUploadModal && (
+          <UploadModal 
+            onClose={() => setShowUploadModal(false)}
+            supabase={supabase}
+          />
+        )}
+
+        <div ref={cesiumContainerRef} className="absolute inset-0 bg-black" />
+
+        <div className="fixed inset-0 pointer-events-none z-[1000]">
+          <div className="absolute top-0 left-0 right-0 p-6">
+            <div className="flex justify-between items-center">
+              <div className="text-xl font-light text-white/90 tracking-tight">
+                Archive
               </div>
-            )}
-
-            {/* Search */}
-            <button className="flex items-center gap-2 bg-[#1a2820]/60 border border-[#5b7c6f]/30 backdrop-blur-xl rounded-full px-6 py-3 text-[#b5b0a0] hover:text-white hover:border-[#5b7c6f]/50 transition-all">
-              <Search className="w-4 h-4" strokeWidth={1.5} />
-              <span className="text-sm font-light">Search location...</span>
-            </button>
-
-            {/* Filter */}
-            <button className="flex items-center gap-2 bg-[#1a2820]/60 border border-[#5b7c6f]/30 backdrop-blur-xl rounded-full px-6 py-3 text-[#b5b0a0] hover:text-white hover:border-[#5b7c6f]/50 transition-all">
-              <Filter className="w-4 h-4" strokeWidth={1.5} />
-              <span className="text-sm font-light">Filters</span>
-            </button>
-          </motion.div>
-        </div>
-
-        {/* Main Content Grid */}
-        <div className="max-w-[1800px] mx-auto px-6 pb-12">
-          <div className="grid lg:grid-cols-[1fr,400px] gap-6">
-            {/* 3D Globe */}
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.8, delay: 0.3 }}
-              className="relative h-[800px] bg-gradient-to-br from-[#1a2820]/40 to-[#0a0f0d]/40 border border-[#5b7c6f]/20 backdrop-blur-xl rounded-2xl overflow-hidden"
-            >
-              <InteractiveGlobe viewMode={viewMode} selectedYear={selectedYear} />
               
-              {/* Globe Info Overlay */}
-              <div className="absolute top-6 left-6 bg-[#0a0f0d]/80 border border-[#5b7c6f]/30 backdrop-blur-xl rounded-xl p-4 max-w-xs">
-                <div className="flex items-center gap-2 mb-3">
-                  <MapPin className="w-4 h-4 text-[#8b9d8a]" strokeWidth={1.5} />
-                  <span className="text-white font-light text-sm">Interactive Controls</span>
-                </div>
-                <div className="space-y-2 text-xs text-[#b5b0a0] font-light">
-                  <div>• <strong className="text-[#d4cfc0]">Click + Drag</strong> to rotate</div>
-                  <div>• <strong className="text-[#d4cfc0]">Scroll</strong> to zoom</div>
-                  <div>• <strong className="text-[#d4cfc0]">Click markers</strong> to view photos</div>
-                  <div>• <strong className="text-[#d4cfc0]">Double-click</strong> location to focus</div>
-                </div>
+              <div className="flex gap-4 pointer-events-auto">
+                <button
+                  onClick={() => setShowUploadModal(true)}
+                  className="px-5 py-2 text-sm font-light text-white/70 hover:text-white transition-colors tracking-wide"
+                >
+                  Contribute
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="absolute left-6 top-24 w-[280px] max-h-[calc(100vh-200px)] overflow-y-auto pointer-events-auto">
+            <div className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-lg p-5">
+              <div className="text-sm font-light text-white/60 mb-4">
+                {siteStats.length} Sites • {stats.totalImages} Images
               </div>
 
-              {/* Stats Overlay */}
-              <div className="absolute bottom-6 left-6 right-6 flex gap-4">
-                <div className="flex-1 bg-[#0a0f0d]/80 border border-[#5b7c6f]/30 backdrop-blur-xl rounded-xl p-4">
-                  <div className="text-3xl font-extralight text-[#8b9d8a] mb-1">0</div>
-                  <div className="text-xs text-[#7a8a7d] tracking-widest uppercase font-light">Photos Archived</div>
-                </div>
-                <div className="flex-1 bg-[#0a0f0d]/80 border border-[#5b7c6f]/30 backdrop-blur-xl rounded-xl p-4">
-                  <div className="text-3xl font-extralight text-[#8b9d8a] mb-1">0</div>
-                  <div className="text-xs text-[#7a8a7d] tracking-widest uppercase font-light">Locations</div>
-                </div>
-                <div className="flex-1 bg-[#0a0f0d]/80 border border-[#5b7c6f]/30 backdrop-blur-xl rounded-xl p-4">
-                  <div className="text-3xl font-extralight text-[#8b9d8a] mb-1">0</div>
-                  <div className="text-xs text-[#7a8a7d] tracking-widest uppercase font-light">Contributors</div>
-                </div>
+              <div className="space-y-2">
+                {siteStats.slice(0, 20).map((site, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => flyToSite(site.lat, site.lon)}
+                    className="w-full p-3 bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/20 rounded transition-all text-left"
+                  >
+                    <div className="text-sm font-light text-white mb-1">
+                      {site.name}
+                    </div>
+                    <div className="flex items-center justify-between text-xs text-white/50">
+                      <span>{site.images} images</span>
+                      <span>{getTimeAgo(site.lastUpload)}</span>
+                    </div>
+                  </button>
+                ))}
               </div>
-            </motion.div>
+            </div>
+          </div>
 
-            {/* Daily Challenge Sidebar */}
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.8, delay: 0.4 }}
-              className="space-y-6"
-            >
-              {/* Daily Challenge Card */}
-              <div className="bg-gradient-to-br from-[#1a2820]/60 to-[#0a0f0d]/60 border border-[#5b7c6f]/30 backdrop-blur-xl rounded-2xl overflow-hidden">
-                {/* Header */}
-                <div className="p-6 border-b border-[#5b7c6f]/20">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#5b7c6f] to-[#8b9d8a] flex items-center justify-center">
-                      <Sparkles className="w-5 h-5 text-white" strokeWidth={1.5} />
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-light text-white">Daily Challenge</h3>
-                      <p className="text-xs text-[#7a8a7d] font-light">{dailyChallenge.date}</p>
-                    </div>
-                  </div>
-                </div>
+          <div className="absolute right-6 top-24 w-[280px] max-h-[calc(100vh-200px)] overflow-y-auto pointer-events-auto">
+            <div className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-lg p-5">
+              <div className="text-sm font-light text-white/60 mb-4">
+                Recent Uploads
+              </div>
 
-                {/* Content */}
-                <div className="p-6">
-                  {!hasPlayed ? (
-                    <>
-                      {/* Progress */}
-                      <div className="mb-6">
-                        <div className="flex justify-between items-center mb-2">
-                          <span className="text-sm text-[#b5b0a0] font-light">
-                            Question {currentQuestion + 1} of {dailyChallenge.questions.length}
-                          </span>
-                          <span className="text-sm text-[#8b9d8a] font-light">
-                            Score: {score}
-                          </span>
+              <div className="space-y-2">
+                {archiveImages.slice(0, 15).map((image) => (
+                  <button
+                    key={image.id}
+                    onClick={() => flyToImage(image)}
+                    className="w-full p-2 bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/20 rounded transition-all text-left"
+                  >
+                    <div className="flex gap-3">
+                      <img 
+                        src={image.thumbnail_url || image.image_url} 
+                        alt={image.title}
+                        className="w-12 h-12 object-cover rounded"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-light text-white truncate">
+                          {image.title}
                         </div>
-                        <div className="h-1 bg-[#1a2820] rounded-full overflow-hidden">
-                          <motion.div
-                            className="h-full bg-gradient-to-r from-[#5b7c6f] to-[#8b9d8a]"
-                            initial={{ width: 0 }}
-                            animate={{ width: `${((currentQuestion + 1) / dailyChallenge.questions.length) * 100}%` }}
-                            transition={{ duration: 0.3 }}
-                          />
+                        <div className="text-xs text-white/50 mt-1">
+                          {getTimeAgo(image.uploaded_at)}
                         </div>
                       </div>
-
-                      {/* Question */}
-                      <div className="mb-6">
-                        <div className="inline-flex items-center gap-2 px-3 py-1 bg-[#5b7c6f]/10 border border-[#5b7c6f]/30 rounded-full mb-4">
-                          <Brain className="w-3 h-3 text-[#8b9d8a]" strokeWidth={1.5} />
-                          <span className="text-xs text-[#d4cfc0] font-light">
-                            {dailyChallenge.questions[currentQuestion].category}
-                          </span>
-                        </div>
-                        <p className="text-white font-light leading-relaxed">
-                          {dailyChallenge.questions[currentQuestion].question}
-                        </p>
-                      </div>
-
-                      {/* Options */}
-                      <div className="space-y-3">
-                        {dailyChallenge.questions[currentQuestion].options.map((option, index) => (
-                          <motion.button
-                            key={index}
-                            onClick={() => handleAnswer(index)}
-                            whileHover={{ scale: 1.02 }}
-                            whileTap={{ scale: 0.98 }}
-                            className="w-full text-left p-4 bg-[#1a2820]/40 border border-[#5b7c6f]/20 hover:border-[#5b7c6f]/50 hover:bg-[#1a2820]/60 rounded-xl transition-all"
-                          >
-                            <div className="flex items-center gap-3">
-                              <div className="w-6 h-6 rounded-full border border-[#5b7c6f]/30 flex items-center justify-center text-xs text-[#8b9d8a] font-light">
-                                {String.fromCharCode(65 + index)}
-                              </div>
-                              <span className="text-[#d4cfc0] font-light">{option}</span>
-                            </div>
-                          </motion.button>
-                        ))}
-                      </div>
-                    </>
-                  ) : (
-                    /* Results */
-                    <div className="text-center py-8">
-                      <motion.div
-                        initial={{ scale: 0 }}
-                        animate={{ scale: 1 }}
-                        transition={{ type: "spring", duration: 0.6 }}
-                        className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-[#5b7c6f] to-[#8b9d8a] flex items-center justify-center"
-                      >
-                        <Trophy className="w-10 h-10 text-white" strokeWidth={1.5} />
-                      </motion.div>
-                      <h4 className="text-2xl font-light text-white mb-2">Challenge Complete!</h4>
-                      <p className="text-4xl font-extralight text-[#8b9d8a] mb-4">
-                        {score}/{dailyChallenge.questions.length}
-                      </p>
-                      <p className="text-[#b5b0a0] font-light mb-6">
-                        {score === dailyChallenge.questions.length 
-                          ? "Perfect score! You're an Earth expert!" 
-                          : score >= 2 
-                          ? "Great job! Keep exploring." 
-                          : "Come back tomorrow for a new challenge!"}
-                      </p>
-                      <button
-                        onClick={() => setShowAuthModal(true)}
-                        className="px-6 py-3 bg-[#5b7c6f] text-white font-light tracking-wide hover:bg-[#6b8c7f] transition-colors rounded-xl"
-                      >
-                        Save Your Score
-                      </button>
                     </div>
-                  )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 pointer-events-auto">
+            <div className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-full px-8 py-3">
+              <div className="flex items-center gap-8 text-sm">
+                <div>
+                  <span className="text-white/50">Today: </span>
+                  <span className="text-white font-light">+{stats.todayUploads}</span>
+                </div>
+                <div className="w-px h-4 bg-white/20" />
+                <div>
+                  <span className="text-white/50">Position: </span>
+                  <span className="text-white font-mono text-xs">{stats.coords}</span>
                 </div>
               </div>
-
-              {/* Leaderboard Preview */}
-              <div className="bg-gradient-to-br from-[#1a2820]/60 to-[#0a0f0d]/60 border border-[#5b7c6f]/30 backdrop-blur-xl rounded-2xl p-6">
-                <div className="flex items-center gap-2 mb-4">
-                  <Trophy className="w-5 h-5 text-[#8b9d8a]" strokeWidth={1.5} />
-                  <h3 className="text-lg font-light text-white">Top Explorers</h3>
-                </div>
-                <div className="space-y-3">
-                  {[1, 2, 3].map((rank) => (
-                    <div key={rank} className="flex items-center gap-3 p-3 bg-[#1a2820]/40 rounded-xl">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-light ${
-                        rank === 1 ? 'bg-gradient-to-br from-yellow-500 to-yellow-600 text-white' :
-                        rank === 2 ? 'bg-gradient-to-br from-gray-300 to-gray-400 text-gray-800' :
-                        'bg-gradient-to-br from-orange-600 to-orange-700 text-white'
-                      }`}>
-                        {rank}
-                      </div>
-                      <div className="flex-1">
-                        <div className="text-sm text-white font-light">Coming soon...</div>
-                        <div className="text-xs text-[#7a8a7d] font-light">Join the community</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </motion.div>
+            </div>
           </div>
         </div>
       </div>
+    </>
+  );
+}
 
-      <Footer />
-    </main>
+function UploadModal({ onClose, supabase }: { onClose: () => void; supabase: any }) {
+  const [uploading, setUploading] = useState(false);
+  const [formData, setFormData] = useState({
+    title: '',
+    description: '',
+    location_name: '',
+    category: 'environmental' as ArchiveImage['category'],
+    uploader_name: '',
+    lat: '',
+    lon: '',
+  });
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string>('');
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setImageFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!imageFile) return;
+
+    setUploading(true);
+
+    try {
+      const fileExt = imageFile.name.split('.').pop();
+      const fileName = `${Math.random()}.${fileExt}`;
+      const filePath = `archive-images/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('lithicearth-archive')
+        .upload(filePath, imageFile);
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('lithicearth-archive')
+        .getPublicUrl(filePath);
+
+      const { error: dbError } = await supabase
+        .from('archive_images')
+        .insert({
+          title: formData.title,
+          description: formData.description,
+          location_name: formData.location_name,
+          category: formData.category,
+          uploader_name: formData.uploader_name,
+          lat: parseFloat(formData.lat),
+          lon: parseFloat(formData.lon),
+          image_url: publicUrl,
+          thumbnail_url: publicUrl,
+          uploaded_at: new Date().toISOString()
+        });
+
+      if (dbError) throw dbError;
+
+      alert('Image uploaded successfully');
+      onClose();
+    } catch (error) {
+      console.error('Error uploading:', error);
+      alert('Error uploading. Please try again.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[10001] flex items-center justify-center bg-black/80 backdrop-blur-sm p-6">
+      <div className="bg-black/60 backdrop-blur-xl border border-white/20 rounded-lg p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-6">
+          <div className="text-xl font-light text-white tracking-tight">
+            Contribute to Archive
+          </div>
+          <button
+            onClick={onClose}
+            className="text-white/60 hover:text-white transition-colors"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div>
+            <label className="block text-sm font-light text-white/70 mb-2">Image</label>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleImageChange}
+              required
+              className="hidden"
+              id="image-upload"
+            />
+            <label
+              htmlFor="image-upload"
+              className="flex flex-col items-center justify-center w-full h-48 border border-white/20 rounded-lg cursor-pointer hover:border-white/40 transition-colors bg-white/5"
+            >
+              {imagePreview ? (
+                <img src={imagePreview} alt="Preview" className="w-full h-full object-cover rounded-lg" />
+              ) : (
+                <div className="text-center">
+                  <p className="text-sm text-white/60">Click to select image</p>
+                </div>
+              )}
+            </label>
+          </div>
+
+          <div>
+            <label className="block text-sm font-light text-white/70 mb-2">Title</label>
+            <input
+              type="text"
+              required
+              value={formData.title}
+              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+              className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-lg text-white placeholder-white/40 focus:border-white/40 focus:outline-none transition-colors"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-light text-white/70 mb-2">Description</label>
+            <textarea
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              rows={3}
+              className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-lg text-white placeholder-white/40 focus:border-white/40 focus:outline-none transition-colors resize-none"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-light text-white/70 mb-2">Location Name</label>
+            <input
+              type="text"
+              required
+              value={formData.location_name}
+              onChange={(e) => setFormData({ ...formData, location_name: e.target.value })}
+              className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-lg text-white placeholder-white/40 focus:border-white/40 focus:outline-none transition-colors"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-light text-white/70 mb-2">Latitude</label>
+              <input
+                type="number"
+                step="any"
+                required
+                value={formData.lat}
+                onChange={(e) => setFormData({ ...formData, lat: e.target.value })}
+                className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-lg text-white placeholder-white/40 focus:border-white/40 focus:outline-none transition-colors"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-light text-white/70 mb-2">Longitude</label>
+              <input
+                type="number"
+                step="any"
+                required
+                value={formData.lon}
+                onChange={(e) => setFormData({ ...formData, lon: e.target.value })}
+                className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-lg text-white placeholder-white/40 focus:border-white/40 focus:outline-none transition-colors"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-light text-white/70 mb-2">Category</label>
+            <select
+              required
+              value={formData.category}
+              onChange={(e) => setFormData({ ...formData, category: e.target.value as any })}
+              className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-lg text-white focus:border-white/40 focus:outline-none transition-colors"
+            >
+              <option value="archaeological">Archaeological</option>
+              <option value="environmental">Environmental</option>
+              <option value="geological">Geological</option>
+              <option value="cultural">Cultural</option>
+              <option value="wildlife">Wildlife</option>
+              <option value="urban">Urban</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-light text-white/70 mb-2">Your Name</label>
+            <input
+              type="text"
+              required
+              value={formData.uploader_name}
+              onChange={(e) => setFormData({ ...formData, uploader_name: e.target.value })}
+              className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-lg text-white placeholder-white/40 focus:border-white/40 focus:outline-none transition-colors"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={uploading}
+            className="w-full py-4 bg-white/10 hover:bg-white/20 border border-white/20 hover:border-white/40 rounded-lg text-white font-light transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {uploading ? 'Uploading...' : 'Upload to Archive'}
+          </button>
+        </form>
+      </div>
+    </div>
   );
 }
