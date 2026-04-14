@@ -1,173 +1,235 @@
 'use client';
 
-import { motion, useScroll, useTransform } from 'framer-motion';
-import Link from 'next/link';
 import { useRef, useEffect, useState } from 'react';
+import Script from 'next/script';
 
 interface HeroProps {
   onSignInClick: () => void;
 }
 
-export function Hero({ onSignInClick }: HeroProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const { scrollYProgress } = useScroll({
-    target: containerRef,
-    offset: ["start start", "end start"]
-  });
-
-  const opacity = useTransform(scrollYProgress, [0, 0.3], [1, 0]);
-  const scale = useTransform(scrollYProgress, [0, 1], [1, 1.5]);
-
-  return (
-    <div ref={containerRef} className="relative h-screen flex items-center justify-center bg-black overflow-hidden">
-      {/* The Globe - Full Screen */}
-      <motion.div 
-        style={{ opacity, scale }}
-        className="absolute inset-0 flex items-center justify-center"
-      >
-        <EarthGlobe />
-      </motion.div>
-
-      {/* Minimal Header - Floats Above */}
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 1, delay: 0.5 }}
-        className="absolute top-0 left-0 right-0 z-50 px-8 py-6"
-      >
-        <div className="max-w-[1800px] mx-auto flex items-center justify-between">
-          <Link href="/" className="text-2xl font-light text-white/90 tracking-tight hover:text-white transition-colors">
-            LithicEarth
-          </Link>
-          
-          <nav className="flex items-center gap-8">
-            <Link 
-              href="/archive"
-              className="text-sm font-light text-white/70 hover:text-white transition-colors tracking-wide"
-            >
-              Archive
-            </Link>
-            <button
-              onClick={onSignInClick}
-              className="text-sm font-light text-white/70 hover:text-white transition-colors tracking-wide"
-            >
-              Sign In
-            </button>
-          </nav>
-        </div>
-      </motion.div>
-
-      {/* Scroll Indicator */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 2, duration: 1 }}
-        className="absolute bottom-12 left-1/2 -translate-x-1/2 z-50"
-      >
-        <motion.div
-          animate={{ y: [0, 12, 0] }}
-          transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-          className="flex flex-col items-center gap-3"
-        >
-          <div className="text-xs text-white/40 tracking-[0.3em] uppercase font-light">
-            Explore
-          </div>
-          <div className="w-px h-16 bg-linear-to-b from-white/30 to-transparent" />
-        </motion.div>
-      </motion.div>
-    </div>
-  );
+declare global {
+  interface Window {
+    Cesium: any;
+  }
 }
 
-function EarthGlobe() {
-  const [rotation, setRotation] = useState(0);
+const SITES = [
+  { name: 'Pyramids of Giza', lon: 31.1342, lat: 29.9792, height: 12000, heading: 35, pitch: -55 },
+  { name: 'Machu Picchu', lon: -72.5450, lat: -13.1631, height: 7000, heading: 140, pitch: -48 },
+  { name: 'Angkor Wat', lon: 103.8670, lat: 13.4125, height: 5500, heading: 85, pitch: -44 },
+  { name: 'Petra', lon: 35.4444, lat: 30.3285, height: 4500, heading: 175, pitch: -52 },
+  { name: 'Stonehenge', lon: -1.8262, lat: 51.1789, height: 2800, heading: 265, pitch: -38 },
+  { name: 'Göbekli Tepe', lon: 38.9224, lat: 37.2232, height: 3200, heading: 210, pitch: -42 },
+  { name: 'Nazca Lines', lon: -74.9285, lat: -14.7391, height: 8000, heading: 0, pitch: -70 },
+  { name: 'Easter Island', lon: -109.3497, lat: -27.1127, height: 3800, heading: 220, pitch: -46 },
+  { name: 'Chichen Itza', lon: -88.5686, lat: 20.6843, height: 4200, heading: 45, pitch: -50 },
+  { name: 'Great Wall', lon: 116.5704, lat: 40.4319, height: 10000, heading: 310, pitch: -48 },
+];
+
+export function Hero({ onSignInClick }: HeroProps) {
+  const cesiumContainerRef = useRef<HTMLDivElement>(null);
+  const viewerRef = useRef<any>(null);
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [showLoading, setShowLoading] = useState(true);
+  const [currentSite, setCurrentSite] = useState(SITES[0].name);
+  const [siteVisible, setSiteVisible] = useState(false);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setRotation((r: number) => r + 0.1);
-    }, 50);
+    if (isLoaded && cesiumContainerRef.current && !viewerRef.current) {
+      initializeCesium();
+    }
+  }, [isLoaded]);
 
-    return () => clearInterval(interval);
-  }, []);
+  const initializeCesium = async () => {
+    if (!window.Cesium || !cesiumContainerRef.current) return;
+
+    const Cesium = window.Cesium;
+    Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJjMGRjY2MwNC1hZjEyLTQzNzktOTJiOS0zN2ZkZGMyMTdlMWEiLCJpZCI6Mzg0NTg4LCJpYXQiOjE3Njk2NDE5ODh9.UGCST0fw1fP3bbzxSwNMKxkerweXJKeVrnRhfPYHAD8';
+
+    try {
+      // Use Sentinel-2 (assetId 3954) — same as working archive page
+      const viewer = new Cesium.Viewer(cesiumContainerRef.current, {
+        terrainProvider: await Cesium.createWorldTerrainAsync({
+          requestWaterMask: true,
+          requestVertexNormals: true,
+        }),
+        imageryProvider: new Cesium.IonImageryProvider({ assetId: 3954 }),
+        baseLayerPicker: false,
+        geocoder: false,
+        homeButton: false,
+        sceneModePicker: false,
+        timeline: false,
+        navigationHelpButton: false,
+        animation: false,
+        fullscreenButton: false,
+        vrButton: false,
+        infoBox: false,
+        selectionIndicator: false,
+        shadows: true,
+        shouldAnimate: true,
+        msaaSamples: 4,
+      });
+
+      viewerRef.current = viewer;
+
+      // Lock all user interaction — pure cinematic
+      const ctrl = viewer.scene.screenSpaceCameraController;
+      ctrl.enableRotate = false;
+      ctrl.enableZoom = false;
+      ctrl.enableTilt = false;
+      ctrl.enableLook = false;
+      ctrl.enableTranslate = false;
+
+      // Hyper-realistic rendering
+      viewer.scene.globe.enableLighting = true;
+      viewer.scene.globe.dynamicAtmosphereLighting = true;
+      viewer.scene.globe.dynamicAtmosphereLightingFromSun = true;
+      viewer.scene.globe.showGroundAtmosphere = true;
+      viewer.scene.globe.maximumScreenSpaceError = 1.2;
+      viewer.scene.globe.tileCacheSize = 800;
+
+      viewer.scene.skyAtmosphere.hueShift = -0.04;
+      viewer.scene.skyAtmosphere.saturationShift = 0.3;
+      viewer.scene.skyAtmosphere.brightnessShift = 0.18;
+
+      viewer.scene.fog.enabled = true;
+      viewer.scene.fog.density = 0.00015;
+      viewer.scene.fog.minimumBrightness = 0.02;
+
+      viewer.scene.highDynamicRange = true;
+      viewer.scene.postProcessStages.fxaa.enabled = true;
+
+      viewer.scene.postProcessStages.bloom.enabled = true;
+      viewer.scene.postProcessStages.bloom.contrast = 120;
+      viewer.scene.postProcessStages.bloom.brightness = -0.35;
+      viewer.scene.postProcessStages.bloom.glowOnly = false;
+
+      viewer.scene.globe.showWaterEffect = true;
+      viewer.scene.light = new Cesium.SunLight();
+
+      viewer.cesiumWidget.creditContainer.style.display = 'none';
+
+      let currentIndex = 0;
+      let rotateTimer: any = null;
+
+      const journeyTo = async (idx: number) => {
+        const site = SITES[idx];
+
+        // Fade out site label
+        setSiteVisible(false);
+
+        await viewer.camera.flyTo({
+          destination: Cesium.Cartesian3.fromDegrees(site.lon, site.lat, site.height),
+          orientation: {
+            heading: Cesium.Math.toRadians(site.heading),
+            pitch: Cesium.Math.toRadians(site.pitch),
+            roll: 0,
+          },
+          duration: 9,
+          easingFunction: Cesium.EasingFunction.SINUSOIDAL_IN_OUT,
+        });
+
+        // Show site name after arrival
+        setCurrentSite(site.name);
+        setSiteVisible(true);
+
+        // Gentle orbit at site
+        let angle = 0;
+        rotateTimer = setInterval(() => {
+          if (viewerRef.current) {
+            viewer.camera.rotate(Cesium.Cartesian3.UNIT_Z, Cesium.Math.toRadians(0.02));
+            angle += 0.02;
+          }
+        }, 16);
+
+        // After dwell, move on
+        setTimeout(() => {
+          clearInterval(rotateTimer);
+          currentIndex = (currentIndex + 1) % SITES.length;
+          journeyTo(currentIndex);
+        }, 16000);
+      };
+
+      journeyTo(0);
+
+      setTimeout(() => setShowLoading(false), 1400);
+    } catch (err) {
+      console.error('Cesium init error:', err);
+      setShowLoading(false);
+    }
+  };
 
   return (
-    <div className="relative w-full h-full flex items-center justify-center">
-      {/* Earth sphere */}
-      <div
-        style={{ 
-          transform: `rotate(${rotation}deg)`,
-          width: '70vh',
-          height: '70vh'
-        }}
-        className="rounded-full relative"
-      >
-        {/* Earth gradient */}
-        <div 
-          className="absolute inset-0 rounded-full"
-          style={{
-            background: 'radial-gradient(circle at 30% 30%, rgba(74, 144, 226, 0.3), rgba(45, 95, 63, 0.6), rgba(26, 58, 46, 0.9))'
-          }}
-        />
-        
-        {/* Atmospheric glow */}
-        <div 
-          className="absolute inset-0 rounded-full" 
-          style={{
-            boxShadow: '0 0 120px 40px rgba(100, 180, 255, 0.15)'
-          }}
-        />
-        
-        {/* Cloud layer */}
+    <>
+      <Script
+        src="https://cesium.com/downloads/cesiumjs/releases/1.112/Build/Cesium/Cesium.js"
+        onLoad={() => setIsLoaded(true)}
+      />
+      <link
+        rel="stylesheet"
+        href="https://cesium.com/downloads/cesiumjs/releases/1.112/Build/Cesium/Widgets/widgets.css"
+      />
+
+      <div className="relative h-screen flex items-center justify-center bg-black overflow-hidden">
+
+        {/* Loading */}
+        {showLoading && (
+          <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-black">
+            <div className="w-1.5 h-1.5 rounded-full bg-[#D4AF37]/50 animate-pulse mb-5" />
+            <p className="text-[10px] text-[#D4AF37]/40 tracking-[0.5em] uppercase font-light">
+              Initializing
+            </p>
+          </div>
+        )}
+
+        {/* Cesium Globe */}
+        <div ref={cesiumContainerRef} className="absolute inset-0 bg-black" />
+
+        {/* Vignette overlay */}
         <div
+          className="absolute inset-0 pointer-events-none z-10"
           style={{
-            animation: 'spin 120s linear infinite'
+            background:
+              'radial-gradient(ellipse at center, transparent 35%, rgba(0,0,0,0.55) 100%)',
           }}
-          className="absolute inset-0 rounded-full bg-linear-to-br from-white/5 via-transparent to-white/5"
         />
-        
-        {/* Day/night terminator */}
-        <div className="absolute inset-0 rounded-full bg-linear-to-r from-transparent via-black/20 to-black/40" />
-      </div>
 
-      {/* Stars */}
-      <div className="absolute inset-0 opacity-30">
-        {Array.from({ length: 100 }).map((_, i) => {
-          const left = Math.random() * 100;
-          const top = Math.random() * 100;
-          const duration = Math.random() * 3 + 2;
-          const delay = Math.random() * 2;
-          
-          return (
-            <motion.div
-              key={i}
-              className="absolute w-px h-px bg-white rounded-full"
-              style={{
-                left: `${left}%`,
-                top: `${top}%`,
-              }}
-              animate={{
-                opacity: [0.2, 1, 0.2],
-              }}
-              transition={{
-                duration,
-                repeat: Infinity,
-                delay,
-              }}
-            />
-          );
-        })}
-      </div>
+        {/* Bottom gradient for text legibility */}
+        <div
+          className="absolute bottom-0 left-0 right-0 h-64 pointer-events-none z-10"
+          style={{
+            background: 'linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 100%)',
+          }}
+        />
 
-      <style jsx>{`
-        @keyframes spin {
-          from {
-            transform: rotate(0deg);
+        {/* Site name — bottom left */}
+        <div
+          className="absolute bottom-20 left-10 z-20 pointer-events-none transition-all duration-1000"
+          style={{ opacity: siteVisible ? 1 : 0, transform: siteVisible ? 'translateY(0)' : 'translateY(6px)' }}
+        >
+          <p className="text-[10px] text-[#D4AF37]/50 tracking-[0.4em] uppercase font-light mb-1">
+            Now viewing
+          </p>
+          <p className="text-sm text-white/70 font-light tracking-[0.12em]">
+            {currentSite}
+          </p>
+        </div>
+
+        {/* Scroll hint — bottom center */}
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-2 pointer-events-none opacity-0 animate-[fadeIn_2s_ease-out_6s_forwards]">
+          <p className="text-[9px] text-white/25 tracking-[0.35em] uppercase font-light">
+            Scroll to explore
+          </p>
+          <div className="w-px h-10 bg-gradient-to-b from-[#D4AF37]/25 to-transparent" />
+        </div>
+
+        <style jsx global>{`
+          @keyframes fadeIn {
+            from { opacity: 0; }
+            to   { opacity: 1; }
           }
-          to {
-            transform: rotate(360deg);
-          }
-        }
-      `}</style>
-    </div>
+        `}</style>
+      </div>
+    </>
   );
 }

@@ -11,7 +11,7 @@ export default function Home() {
   const [showAuthModal, setShowAuthModal] = useState(false);
 
   return (
-    <main className="min-h-screen bg-[#f5f3ed]">
+    <main className="min-h-screen bg-black">
       <Navigation onSignInClick={() => setShowAuthModal(true)} />
       <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />
       <Hero onSignInClick={() => setShowAuthModal(true)} />

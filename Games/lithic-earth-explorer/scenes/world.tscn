@@ -1,0 +1,46 @@
+[gd_scene load_steps=7 format=3 uid="uid://dt5yjls12ivkj"]
+
+[ext_resource type="Script" uid="uid://c5ihnvh6evuq1" path="res://scripts/sigma.gd" id="1_nnsk1"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_e5uuo"]
+size = Vector3(50, 1, 50)
+
+[sub_resource type="BoxMesh" id="BoxMesh_nnsk1"]
+size = Vector3(50, 1, 50)
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_e5uuo"]
+
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_nnsk1"]
+
+[sub_resource type="Environment" id="Environment_nnsk1"]
+
+[node name="World" type="Node3D"]
+
+[node name="Ground" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Ground"]
+shape = SubResource("BoxShape3D_e5uuo")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Ground"]
+mesh = SubResource("BoxMesh_nnsk1")
+
+[node name="Sigma" type="CharacterBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+script = ExtResource("1_nnsk1")
+
+[node name="Camera" type="Camera3D" parent="Sigma"]
+transform = Transform3D(1, 0, 0, 0, 0.9848077, 0.17364818, 0, -0.17364818, 0.9848077, 0, 2, 6)
+current = true
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Sigma"]
+shape = SubResource("CapsuleShape3D_e5uuo")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Sigma"]
+mesh = SubResource("CapsuleMesh_nnsk1")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.70710677, -0.49999997, 0.49999997, 0, 0.70710677, 0.70710677, -0.70710677, -0.49999997, 0.49999997, 0, 0, 0)
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_nnsk1")

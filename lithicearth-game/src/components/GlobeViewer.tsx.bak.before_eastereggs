@@ -1,0 +1,242 @@
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useGameStore } from '../hooks/useGameStore';
+import { ANCIENT_SITES } from '../data/sites';
+
+type Vec2 = { x: number; y: number };
+
+export const GlobeViewer: React.FC = () => {
+  const { globeMode, currentSite, setCurrentSite, unlockedSites } = useGameStore();
+
+  const [explore, setExplore] = useState(true);
+  const [pos, setPos] = useState<Vec2>({ x: 0, y: 0 }); // world coords
+  const velRef = useRef<Vec2>({ x: 0, y: 0 });
+  const keysRef = useRef<Record<string, boolean>>({});
+
+  const unlocked = useMemo(() => {
+    const allowed = new Set(unlockedSites);
+    return ANCIENT_SITES.filter((s) => allowed.has(s.id));
+  }, [unlockedSites]);
+
+  const active = useMemo(() => {
+    if (!currentSite) return null;
+    return ANCIENT_SITES.find((s) => s.id === currentSite) ?? null;
+  }, [currentSite]);
+
+  // Map sites into world positions (fake but consistent)
+  const pois = useMemo(() => {
+    // spread POIs around in a nice triangle-ish
+    const base: Record<string, Vec2> = {
+      'gobekli-tepe': { x: -420, y: 120 },
+      'giza': { x: 140, y: 220 },
+      'stonehenge': { x: 260, y: -220 },
+    };
+    return unlocked.map((s, i) => ({
+      ...s,
+      p: base[s.id] ?? { x: -200 + i * 220, y: -120 + i * 80 },
+    }));
+  }, [unlocked]);
+
+  // Keyboard controls
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => (keysRef.current[e.key.toLowerCase()] = true);
+    const up = (e: KeyboardEvent) => (keysRef.current[e.key.toLowerCase()] = false);
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
+    return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+    };
+  }, []);
+
+  // Game loop
+  useEffect(() => {
+    if (!explore) return;
+
+    let raf = 0;
+    const tick = () => {
+      const k = keysRef.current;
+      const speed = k['shift'] ? 6.2 : 4.0;
+
+      const ax =
+        (k['d'] || k['arrowright'] ? 1 : 0) + (k['a'] || k['arrowleft'] ? -1 : 0);
+      const ay =
+        (k['s'] || k['arrowdown'] ? 1 : 0) + (k['w'] || k['arrowup'] ? -1 : 0);
+
+      // smooth velocity
+      velRef.current.x = velRef.current.x * 0.82 + ax * speed * 0.18;
+      velRef.current.y = velRef.current.y * 0.82 + ay * speed * 0.18;
+
+      setPos((p) => ({
+        x: p.x + velRef.current.x,
+        y: p.y + velRef.current.y,
+      }));
+
+      raf = requestAnimationFrame(tick);
+    };
+
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [explore]);
+
+  // Collision: walk into POI to enter site
+  useEffect(() => {
+    if (!explore || currentSite) return;
+
+    for (const s of pois) {
+      const dx = pos.x - s.p.x;
+      const dy = pos.y - s.p.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 44) {
+        setCurrentSite(s.id);
+        break;
+      }
+    }
+  }, [explore, pos.x, pos.y, pois, currentSite, setCurrentSite]);
+
+  // camera follows player by moving the grid opposite the player
+  const cam = explore ? { x: -pos.x, y: -pos.y } : { x: 0, y: 0 };
+
+  return (
+    <div
+      style={{
+        width: '100vw',
+        height: '100vh',
+        background:
+          globeMode === 'stylized'
+            ? 'radial-gradient(circle at 30% 20%, rgba(120,240,200,0.20), transparent 55%), radial-gradient(circle at 70% 60%, rgba(90,160,255,0.18), transparent 55%), #05050d'
+            : 'radial-gradient(circle at 30% 20%, rgba(255,255,255,0.10), transparent 55%), #05050d',
+        position: 'relative',
+        overflow: 'hidden',
+        color: 'white',
+      }}
+    >
+      {/* top center toggle */}
+      <div style={{
+        position: 'fixed',
+        top: 16,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        zIndex: 55,
+        pointerEvents: 'auto',
+      }}>
+        <button
+          type="button"
+          onClick={() => setExplore((v) => !v)}
+          style={{
+            padding: '10px 12px',
+            borderRadius: 14,
+            border: '1px solid rgba(255,255,255,0.18)',
+            background: 'rgba(10,10,24,0.55)',
+            backdropFilter: 'blur(10px)',
+            color: 'white',
+            cursor: 'pointer',
+            fontWeight: 900,
+          }}
+          title="Toggle Explore Mode"
+        >
+          {explore ? 'Explore Mode: ON (WASD)' : 'Explore Mode: OFF'}
+        </button>
+      </div>
+
+      {/* world */}
+      <div className="world">
+        <div
+          className="world-grid"
+          style={{
+            transform: `translate3d(${cam.x}px, ${cam.y}px, 0)`,
+          }}
+        />
+
+        {/* POIs */}
+        {pois.map((s) => (
+          <div
+            key={s.id}
+            className="poi"
+            onClick={() => setCurrentSite(s.id)}
+            title={`${s.name} (${s.era})`}
+            style={{
+              left: `calc(50% + ${s.p.x + cam.x}px)`,
+              top: `calc(50% + ${s.p.y + cam.y}px)`,
+              background:
+                s.id === currentSite
+                  ? 'rgba(255,255,255,0.20)'
+                  : 'rgba(255,255,255,0.10)',
+            }}
+          />
+        ))}
+
+        {/* player */}
+        <div
+          className="player"
+          style={{
+            left: `calc(50% + ${cam.x + pos.x}px)`,
+            top: `calc(50% + ${cam.y + pos.y}px)`,
+            background:
+              globeMode === 'stylized'
+                ? 'radial-gradient(circle at 30% 20%, rgba(255,255,255,0.9), rgba(90,160,255,0.75))'
+                : 'radial-gradient(circle at 30% 20%, rgba(255,255,255,0.85), rgba(255,215,0,0.65))',
+          }}
+        />
+      </div>
+
+      {/* site overlay */}
+      {active && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 78,
+            right: 18,
+            width: 360,
+            maxWidth: 'calc(100vw - 36px)',
+            background: 'rgba(10,10,24,0.70)',
+            backdropFilter: 'blur(12px)',
+            border: '1px solid rgba(255,255,255,0.14)',
+            borderRadius: 18,
+            padding: 14,
+            boxShadow: '0 18px 70px rgba(0,0,0,0.60)',
+            zIndex: 55,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
+            <div style={{ fontWeight: 1000, letterSpacing: '0.5px' }}>{active.name}</div>
+            <div style={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.9rem' }}>{active.era}</div>
+          </div>
+
+          <div style={{ marginTop: 8, color: 'rgba(255,255,255,0.80)', lineHeight: 1.35 }}>
+            {active.description}
+          </div>
+
+          <div style={{ marginTop: 10, color: 'rgba(255,255,255,0.70)', fontSize: '0.92rem' }}>
+            <strong style={{ color: 'white' }}>Mysteries:</strong> {active.mysteries.join(' • ')}
+          </div>
+
+          <div style={{ marginTop: 12, display: 'flex', gap: 10 }}>
+            <button
+              type="button"
+              onClick={() => setCurrentSite(null)}
+              style={{
+                padding: '10px 12px',
+                borderRadius: 14,
+                border: '1px solid rgba(255,255,255,0.18)',
+                background: 'rgba(255,255,255,0.06)',
+                color: 'white',
+                cursor: 'pointer',
+                fontWeight: 900,
+              }}
+              title="Back to globe (choose another site)"
+            >
+              ← Back to Sites
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* HUD */}
+      <div className="hud">
+        <div>Player: {Math.round(pos.x)}, {Math.round(pos.y)}</div>
+        <div>Site: {currentSite ?? 'none'}</div>
+        <div style={{ opacity: 0.7, fontWeight: 800 }}>Tip: Walk into a dot to “travel”.</div>
+      </div>
+    </div>
+  );
+};

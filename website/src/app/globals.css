@@ -1,138 +1,63 @@
 @import "tailwindcss";
 
+/* ── Brand tokens ───────────────────────────────────────────────────── */
 :root {
-  --background: #020617;
-  --foreground: #f8fafc;
+  --background: #000000;
+  --foreground: #e8e4d9;
+  --gold:        #D4AF37;
+  --gold-dim:    rgba(212, 175, 55, 0.15);
+  --border:      rgba(255, 255, 255, 0.07);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #020617;
-    --foreground: #f8fafc;
-  }
+/* ── Base ───────────────────────────────────────────────────────────── */
+html {
+  scroll-behavior: smooth;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
-}
-
-/* Smooth scrolling */
-html {
-  scroll-behavior: smooth;
-}
-
-/* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 10px;
-}
-
-::-webkit-scrollbar-track {
-  background: rgb(2 6 23);
-}
-
-::-webkit-scrollbar-thumb {
-  background: rgb(30 41 59);
-  border-radius: 5px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: rgb(51 65 85);
-}
-
-/* Custom animations */
-@keyframes float {
-  0%, 100% {
-    transform: translateY(0px);
-  }
-  50% {
-    transform: translateY(-20px);
-  }
-}
-
-@keyframes glow-pulse {
-  0%, 100% {
-    box-shadow: 0 0 20px rgba(6, 182, 212, 0.3);
-  }
-  50% {
-    box-shadow: 0 0 40px rgba(6, 182, 212, 0.6);
-  }
-}
-
-@keyframes gradient-shift {
-  0%, 100% {
-    background-position: 0% 50%;
-  }
-  50% {
-    background-position: 100% 50%;
-  }
-}
-
-/* Utility classes */
-.animate-float {
-  animation: float 6s ease-in-out infinite;
-}
-
-.animate-glow {
-  animation: glow-pulse 3s ease-in-out infinite;
-}
-
-.animate-gradient {
-  animation: gradient-shift 8s ease infinite;
-  background-size: 200% 200%;
-}
-
-.text-balance {
-  text-wrap: balance;
-}
-
-/* Glow effects */
-.glow-cyan {
-  box-shadow: 0 0 20px rgba(6, 182, 212, 0.3);
-}
-
-.glow-blue {
-  box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
-}
-
-.glow-purple {
-  box-shadow: 0 0 20px rgba(168, 85, 247, 0.3);
-}
-
-/* Backdrop blur fallback */
-.backdrop-blur-fallback {
-  background-color: rgba(2, 6, 23, 0.8);
-}
-
-@supports (backdrop-filter: blur(10px)) {
-  .backdrop-blur-fallback {
-    background-color: rgba(2, 6, 23, 0.5);
-    backdrop-filter: blur(10px);
-  }
-}
-
-/* Prevent scroll anchoring during animations */
-* {
-  scroll-behavior: smooth;
-}
-
-/* Improve text rendering */
-body {
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Fix for canvas not filling container */
+/* ── Cormorant Garamond for display headings ────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&display=swap');
+
+.font-display {
+  font-family: 'Cormorant Garamond', Georgia, serif;
+}
+
+/* ── Scrollbar ─────────────────────────────────────────────────────── */
+::-webkit-scrollbar       { width: 5px; }
+::-webkit-scrollbar-track { background: #000; }
+::-webkit-scrollbar-thumb { background: rgba(212, 175, 55, 0.2); }
+::-webkit-scrollbar-thumb:hover { background: rgba(212, 175, 55, 0.4); }
+
+/* ── Canvas fill ───────────────────────────────────────────────────── */
 canvas {
   display: block;
   width: 100%;
   height: 100%;
 }
+
+/* ── Animations ────────────────────────────────────────────────────── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes slowPulse {
+  0%, 100% { opacity: 0.4; }
+  50%       { opacity: 1;   }
+}
+
+.animate-fade-up   { animation: fadeUp    0.8s ease-out forwards; }
+.animate-fade-in   { animation: fadeIn    1s   ease-out forwards; }
+.animate-slow-pulse { animation: slowPulse 3s   ease-in-out infinite; }
