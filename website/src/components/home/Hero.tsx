@@ -46,8 +46,8 @@ export function Hero({ onSignInClick }: HeroProps) {
 
     try {
       const viewer = new Cesium.Viewer(cesiumContainerRef.current, {
-        // Asset 2 = Cesium Ion Natural Earth — true color, always available, no extra key needed
-        imageryProvider: new Cesium.IonImageryProvider({ assetId: 2 }),
+        // Google Maps 2D Satellite — highest quality, already in your Ion account
+        imageryProvider: new Cesium.IonImageryProvider({ assetId: 3830182 }),
         terrainProvider: await Cesium.createWorldTerrainAsync({ requestVertexNormals: true }),
         baseLayerPicker: false,
         geocoder: false,
@@ -63,13 +63,13 @@ export function Hero({ onSignInClick }: HeroProps) {
         shadows: false,
         shouldAnimate: false,
         msaaSamples: 4,
-        skyBox: false,           // No star field
-        skyAtmosphere: false,    // No blue atmospheric haze
+        skyBox: false,        // No star field flicker during transitions
+        skyAtmosphere: false, // No blue atmospheric haze — this was the main culprit
       });
 
       viewerRef.current = viewer;
 
-      // Lock all camera interaction
+      // Lock all camera interaction — pure cinematic
       const ctrl = viewer.scene.screenSpaceCameraController;
       ctrl.enableRotate = false;
       ctrl.enableZoom = false;
@@ -77,19 +77,19 @@ export function Hero({ onSignInClick }: HeroProps) {
       ctrl.enableLook = false;
       ctrl.enableTranslate = false;
 
-      // Rendering — stripped down, let imagery show
+      // Stripped rendering — let the satellite imagery speak
       viewer.scene.globe.enableLighting = false;
-      viewer.scene.globe.showGroundAtmosphere = false; // This is what causes blue tint at low alt
+      viewer.scene.globe.showGroundAtmosphere = false; // Kills the blue tint at low altitude
       viewer.scene.globe.maximumScreenSpaceError = 1.0;
       viewer.scene.globe.tileCacheSize = 1000;
       viewer.scene.globe.preloadAncestors = true;
-      viewer.scene.fog.enabled = false;               // No fog
+      viewer.scene.fog.enabled = false;
       viewer.scene.highDynamicRange = false;
       viewer.scene.postProcessStages.fxaa.enabled = true;
       viewer.scene.postProcessStages.bloom.enabled = false;
       viewer.scene.backgroundColor = Cesium.Color.BLACK;
 
-      // Pin to midday so terrain is always bright
+      // Pin to midday — terrain always lit, no dark side of earth
       viewer.clock.shouldAnimate = false;
       viewer.clock.currentTime = Cesium.JulianDate.fromIso8601('2024-06-21T10:00:00Z');
       viewer.cesiumWidget.creditContainer.style.display = 'none';
@@ -114,7 +114,7 @@ export function Hero({ onSignInClick }: HeroProps) {
         setSiteVisible(false);
         if (rotateTimer) { clearInterval(rotateTimer); rotateTimer = null; }
 
-        // Jump high above the site first — avoids camera sweeping through space
+        // Teleport high above site first — prevents camera sweeping through space
         viewer.camera.setView({
           destination: Cesium.Cartesian3.fromDegrees(site.lon, site.lat, site.height * 10),
           orientation: {
@@ -124,7 +124,7 @@ export function Hero({ onSignInClick }: HeroProps) {
           },
         });
 
-        // Let globe start fetching tiles at this location
+        // Brief pause so globe starts pre-fetching tiles at this location
         await new Promise<void>((r) => setTimeout(r, 300));
         if (isDestroyed) return;
 
@@ -146,7 +146,7 @@ export function Hero({ onSignInClick }: HeroProps) {
 
         if (isDestroyed) return;
 
-        // Wait for full tile resolution (max 4s)
+        // Wait for full tile resolution at destination (max 4s)
         await Promise.race([waitForTiles(), new Promise<void>((r) => setTimeout(r, 4000))]);
         if (isDestroyed) return;
 
@@ -154,14 +154,14 @@ export function Hero({ onSignInClick }: HeroProps) {
         setSiteVisible(true);
         setShowLoading(false);
 
-        // Slow orbit
+        // Slow cinematic orbit
         rotateTimer = setInterval(() => {
           if (!isDestroyed && viewerRef.current) {
             viewer.camera.rotate(Cesium.Cartesian3.UNIT_Z, Cesium.Math.toRadians(0.010));
           }
         }, 16);
 
-        // Move on after 14s
+        // Move to next site after 14s
         dwellTimer = setTimeout(() => {
           if (rotateTimer) { clearInterval(rotateTimer); rotateTimer = null; }
           currentIndex = (currentIndex + 1) % SITES.length;
@@ -206,10 +206,13 @@ export function Hero({ onSignInClick }: HeroProps) {
 
         <div ref={cesiumContainerRef} className="absolute inset-0 bg-black" />
 
+        {/* Subtle vignette */}
         <div
           className="absolute inset-0 pointer-events-none z-10"
           style={{ background: 'radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.4) 100%)' }}
         />
+
+        {/* Bottom gradient for text legibility */}
         <div
           className="absolute bottom-0 left-0 right-0 h-48 pointer-events-none z-10"
           style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 100%)' }}
