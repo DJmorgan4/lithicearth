@@ -14,16 +14,14 @@ declare global {
 }
 
 const SITES = [
-  { name: 'Pyramids of Giza', lon: 31.1342, lat: 29.9792, height: 12000, heading: 35, pitch: -55 },
-  { name: 'Machu Picchu', lon: -72.5450, lat: -13.1631, height: 7000, heading: 140, pitch: -48 },
-  { name: 'Angkor Wat', lon: 103.8670, lat: 13.4125, height: 5500, heading: 85, pitch: -44 },
-  { name: 'Petra', lon: 35.4444, lat: 30.3285, height: 4500, heading: 175, pitch: -52 },
-  { name: 'Stonehenge', lon: -1.8262, lat: 51.1789, height: 2800, heading: 265, pitch: -38 },
-  { name: 'Göbekli Tepe', lon: 38.9224, lat: 37.2232, height: 3200, heading: 210, pitch: -42 },
-  { name: 'Nazca Lines', lon: -74.9285, lat: -14.7391, height: 8000, heading: 0, pitch: -70 },
-  { name: 'Easter Island', lon: -109.3497, lat: -27.1127, height: 3800, heading: 220, pitch: -46 },
-  { name: 'Chichen Itza', lon: -88.5686, lat: 20.6843, height: 4200, heading: 45, pitch: -50 },
-  { name: 'Great Wall', lon: 116.5704, lat: 40.4319, height: 10000, heading: 310, pitch: -48 },
+  { name: 'Pyramids of Giza', region: 'Egypt', lon: 31.1342, lat: 29.9792, height: 1800, heading: 35, pitch: -28 },
+  { name: 'Machu Picchu', region: 'Peru', lon: -72.5450, lat: -13.1631, height: 1400, heading: 140, pitch: -32 },
+  { name: 'Angkor Wat', region: 'Cambodia', lon: 103.8670, lat: 13.4125, height: 1100, heading: 5, pitch: -30 },
+  { name: 'Petra', region: 'Jordan', lon: 35.4444, lat: 30.3285, height: 1200, heading: 175, pitch: -34 },
+  { name: 'Stonehenge', region: 'England', lon: -1.8262, lat: 51.1789, height: 600, heading: 265, pitch: -22 },
+  { name: 'Göbekli Tepe', region: 'Turkey', lon: 38.9224, lat: 37.2232, height: 900, heading: 210, pitch: -26 },
+  { name: 'Nazca Lines', region: 'Peru', lon: -74.9285, lat: -14.7391, height: 2200, heading: 0, pitch: -55 },
+  { name: 'Chichen Itza', region: 'Mexico', lon: -88.5686, lat: 20.6843, height: 900, heading: 45, pitch: -28 },
 ];
 
 export function Hero({ onSignInClick }: HeroProps) {
@@ -31,7 +29,7 @@ export function Hero({ onSignInClick }: HeroProps) {
   const viewerRef = useRef<any>(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const [showLoading, setShowLoading] = useState(true);
-  const [currentSite, setCurrentSite] = useState(SITES[0].name);
+  const [currentSite, setCurrentSite] = useState(SITES[0]);
   const [siteVisible, setSiteVisible] = useState(false);
 
   useEffect(() => {
@@ -42,18 +40,15 @@ export function Hero({ onSignInClick }: HeroProps) {
 
   const initializeCesium = async () => {
     if (!window.Cesium || !cesiumContainerRef.current) return;
-
     const Cesium = window.Cesium;
-    Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJjMGRjY2MwNC1hZjEyLTQzNzktOTJiOS0zN2ZkZGMyMTdlMWEiLCJpZCI6Mzg0NTg4LCJpYXQiOjE3Njk2NDE5ODh9.UGCST0fw1fP3bbzxSwNMKxkerweXJKeVrnRhfPYHAD8';
+    Cesium.Ion.defaultAccessToken =
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJjMGRjY2MwNC1hZjEyLTQzNzktOTJiOS0zN2ZkZGMyMTdlMWEiLCJpZCI6Mzg0NTg4LCJpYXQiOjE3Njk2NDE5ODh9.UGCST0fw1fP3bbzxSwNMKxkerweXJKeVrnRhfPYHAD8';
 
     try {
-      // Use Sentinel-2 (assetId 3954) — same as working archive page
       const viewer = new Cesium.Viewer(cesiumContainerRef.current, {
-        terrainProvider: await Cesium.createWorldTerrainAsync({
-          requestWaterMask: true,
-          requestVertexNormals: true,
-        }),
-        imageryProvider: new Cesium.IonImageryProvider({ assetId: 3954 }),
+        // Asset 2 = Cesium Ion Natural Earth — true color, always available, no extra key needed
+        imageryProvider: new Cesium.IonImageryProvider({ assetId: 2 }),
+        terrainProvider: await Cesium.createWorldTerrainAsync({ requestVertexNormals: true }),
         baseLayerPicker: false,
         geocoder: false,
         homeButton: false,
@@ -65,14 +60,16 @@ export function Hero({ onSignInClick }: HeroProps) {
         vrButton: false,
         infoBox: false,
         selectionIndicator: false,
-        shadows: true,
-        shouldAnimate: true,
+        shadows: false,
+        shouldAnimate: false,
         msaaSamples: 4,
+        skyBox: false,           // No star field
+        skyAtmosphere: false,    // No blue atmospheric haze
       });
 
       viewerRef.current = viewer;
 
-      // Lock all user interaction — pure cinematic
+      // Lock all camera interaction
       const ctrl = viewer.scene.screenSpaceCameraController;
       ctrl.enableRotate = false;
       ctrl.enableZoom = false;
@@ -80,79 +77,105 @@ export function Hero({ onSignInClick }: HeroProps) {
       ctrl.enableLook = false;
       ctrl.enableTranslate = false;
 
-      // Hyper-realistic rendering
-      viewer.scene.globe.enableLighting = true;
-      viewer.scene.globe.dynamicAtmosphereLighting = true;
-      viewer.scene.globe.dynamicAtmosphereLightingFromSun = true;
-      viewer.scene.globe.showGroundAtmosphere = true;
-      viewer.scene.globe.maximumScreenSpaceError = 1.2;
-      viewer.scene.globe.tileCacheSize = 800;
-
-      viewer.scene.skyAtmosphere.hueShift = -0.04;
-      viewer.scene.skyAtmosphere.saturationShift = 0.3;
-      viewer.scene.skyAtmosphere.brightnessShift = 0.18;
-
-      viewer.scene.fog.enabled = true;
-      viewer.scene.fog.density = 0.00015;
-      viewer.scene.fog.minimumBrightness = 0.02;
-
-      viewer.scene.highDynamicRange = true;
+      // Rendering — stripped down, let imagery show
+      viewer.scene.globe.enableLighting = false;
+      viewer.scene.globe.showGroundAtmosphere = false; // This is what causes blue tint at low alt
+      viewer.scene.globe.maximumScreenSpaceError = 1.0;
+      viewer.scene.globe.tileCacheSize = 1000;
+      viewer.scene.globe.preloadAncestors = true;
+      viewer.scene.fog.enabled = false;               // No fog
+      viewer.scene.highDynamicRange = false;
       viewer.scene.postProcessStages.fxaa.enabled = true;
+      viewer.scene.postProcessStages.bloom.enabled = false;
+      viewer.scene.backgroundColor = Cesium.Color.BLACK;
 
-      viewer.scene.postProcessStages.bloom.enabled = true;
-      viewer.scene.postProcessStages.bloom.contrast = 120;
-      viewer.scene.postProcessStages.bloom.brightness = -0.35;
-      viewer.scene.postProcessStages.bloom.glowOnly = false;
-
-      viewer.scene.globe.showWaterEffect = true;
-      viewer.scene.light = new Cesium.SunLight();
-
+      // Pin to midday so terrain is always bright
+      viewer.clock.shouldAnimate = false;
+      viewer.clock.currentTime = Cesium.JulianDate.fromIso8601('2024-06-21T10:00:00Z');
       viewer.cesiumWidget.creditContainer.style.display = 'none';
 
       let currentIndex = 0;
-      let rotateTimer: any = null;
+      let rotateTimer: ReturnType<typeof setInterval> | null = null;
+      let dwellTimer: ReturnType<typeof setTimeout> | null = null;
+      let isDestroyed = false;
 
-      const journeyTo = async (idx: number) => {
-        const site = SITES[idx];
-
-        // Fade out site label
-        setSiteVisible(false);
-
-        await viewer.camera.flyTo({
-          destination: Cesium.Cartesian3.fromDegrees(site.lon, site.lat, site.height),
-          orientation: {
-            heading: Cesium.Math.toRadians(site.heading),
-            pitch: Cesium.Math.toRadians(site.pitch),
-            roll: 0,
-          },
-          duration: 9,
-          easingFunction: Cesium.EasingFunction.SINUSOIDAL_IN_OUT,
+      const waitForTiles = (): Promise<void> =>
+        new Promise((resolve) => {
+          const check = () => {
+            if (viewer.scene.globe.tilesLoaded) resolve();
+            else requestAnimationFrame(check);
+          };
+          check();
         });
 
-        // Show site name after arrival
-        setCurrentSite(site.name);
-        setSiteVisible(true);
+      const journeyTo = async (idx: number) => {
+        if (isDestroyed) return;
+        const site = SITES[idx];
+        setSiteVisible(false);
+        if (rotateTimer) { clearInterval(rotateTimer); rotateTimer = null; }
 
-        // Gentle orbit at site
-        let angle = 0;
+        // Jump high above the site first — avoids camera sweeping through space
+        viewer.camera.setView({
+          destination: Cesium.Cartesian3.fromDegrees(site.lon, site.lat, site.height * 10),
+          orientation: {
+            heading: Cesium.Math.toRadians(site.heading),
+            pitch: Cesium.Math.toRadians(-60),
+            roll: 0,
+          },
+        });
+
+        // Let globe start fetching tiles at this location
+        await new Promise<void>((r) => setTimeout(r, 300));
+        if (isDestroyed) return;
+
+        // Cinematic dive in
+        await new Promise<void>((resolve) => {
+          viewer.camera.flyTo({
+            destination: Cesium.Cartesian3.fromDegrees(site.lon, site.lat, site.height),
+            orientation: {
+              heading: Cesium.Math.toRadians(site.heading),
+              pitch: Cesium.Math.toRadians(site.pitch),
+              roll: 0,
+            },
+            duration: 7,
+            easingFunction: Cesium.EasingFunction.SINUSOIDAL_IN_OUT,
+            complete: resolve,
+            cancel: resolve,
+          });
+        });
+
+        if (isDestroyed) return;
+
+        // Wait for full tile resolution (max 4s)
+        await Promise.race([waitForTiles(), new Promise<void>((r) => setTimeout(r, 4000))]);
+        if (isDestroyed) return;
+
+        setCurrentSite(site);
+        setSiteVisible(true);
+        setShowLoading(false);
+
+        // Slow orbit
         rotateTimer = setInterval(() => {
-          if (viewerRef.current) {
-            viewer.camera.rotate(Cesium.Cartesian3.UNIT_Z, Cesium.Math.toRadians(0.02));
-            angle += 0.02;
+          if (!isDestroyed && viewerRef.current) {
+            viewer.camera.rotate(Cesium.Cartesian3.UNIT_Z, Cesium.Math.toRadians(0.010));
           }
         }, 16);
 
-        // After dwell, move on
-        setTimeout(() => {
-          clearInterval(rotateTimer);
+        // Move on after 14s
+        dwellTimer = setTimeout(() => {
+          if (rotateTimer) { clearInterval(rotateTimer); rotateTimer = null; }
           currentIndex = (currentIndex + 1) % SITES.length;
           journeyTo(currentIndex);
-        }, 16000);
+        }, 14000);
       };
 
-      journeyTo(0);
+      setTimeout(() => journeyTo(0), 500);
 
-      setTimeout(() => setShowLoading(false), 1400);
+      return () => {
+        isDestroyed = true;
+        if (rotateTimer) clearInterval(rotateTimer);
+        if (dwellTimer) clearTimeout(dwellTimer);
+      };
     } catch (err) {
       console.error('Cesium init error:', err);
       setShowLoading(false);
@@ -172,62 +195,65 @@ export function Hero({ onSignInClick }: HeroProps) {
 
       <div className="relative h-screen flex items-center justify-center bg-black overflow-hidden">
 
-        {/* Loading */}
         {showLoading && (
           <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-black">
             <div className="w-1.5 h-1.5 rounded-full bg-[#D4AF37]/50 animate-pulse mb-5" />
             <p className="text-[10px] text-[#D4AF37]/40 tracking-[0.5em] uppercase font-light">
-              Initializing
+              Preparing sites
             </p>
           </div>
         )}
 
-        {/* Cesium Globe */}
         <div ref={cesiumContainerRef} className="absolute inset-0 bg-black" />
 
-        {/* Vignette overlay */}
         <div
           className="absolute inset-0 pointer-events-none z-10"
-          style={{
-            background:
-              'radial-gradient(ellipse at center, transparent 35%, rgba(0,0,0,0.55) 100%)',
-          }}
+          style={{ background: 'radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.4) 100%)' }}
         />
-
-        {/* Bottom gradient for text legibility */}
         <div
-          className="absolute bottom-0 left-0 right-0 h-64 pointer-events-none z-10"
-          style={{
-            background: 'linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 100%)',
-          }}
+          className="absolute bottom-0 left-0 right-0 h-48 pointer-events-none z-10"
+          style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 100%)' }}
         />
 
-        {/* Site name — bottom left */}
+        {/* Site label — bottom left */}
         <div
           className="absolute bottom-20 left-10 z-20 pointer-events-none transition-all duration-1000"
-          style={{ opacity: siteVisible ? 1 : 0, transform: siteVisible ? 'translateY(0)' : 'translateY(6px)' }}
+          style={{ opacity: siteVisible ? 1 : 0, transform: siteVisible ? 'translateY(0)' : 'translateY(8px)' }}
         >
-          <p className="text-[10px] text-[#D4AF37]/50 tracking-[0.4em] uppercase font-light mb-1">
-            Now viewing
-          </p>
-          <p className="text-sm text-white/70 font-light tracking-[0.12em]">
-            {currentSite}
-          </p>
+          <p className="text-[9px] text-[#D4AF37]/60 tracking-[0.45em] uppercase font-light mb-1">Now Viewing</p>
+          <p className="text-base text-white/85 font-light tracking-[0.08em]">{currentSite.name}</p>
+          <p className="text-[10px] text-white/35 tracking-[0.25em] uppercase font-light mt-0.5">{currentSite.region}</p>
         </div>
 
-        {/* Scroll hint — bottom center */}
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-2 pointer-events-none opacity-0 animate-[fadeIn_2s_ease-out_6s_forwards]">
-          <p className="text-[9px] text-white/25 tracking-[0.35em] uppercase font-light">
-            Scroll to explore
-          </p>
-          <div className="w-px h-10 bg-gradient-to-b from-[#D4AF37]/25 to-transparent" />
+        {/* Progress dots — bottom right */}
+        <div
+          className="absolute bottom-[84px] right-10 z-20 pointer-events-none flex gap-1.5 transition-opacity duration-700"
+          style={{ opacity: siteVisible ? 1 : 0 }}
+        >
+          {SITES.map((s) => (
+            <div
+              key={s.name}
+              className="transition-all duration-500"
+              style={{
+                width: s.name === currentSite.name ? '16px' : '4px',
+                height: '2px',
+                background: s.name === currentSite.name ? '#D4AF37' : 'rgba(255,255,255,0.2)',
+                borderRadius: '1px',
+              }}
+            />
+          ))}
+        </div>
+
+        {/* Scroll hint */}
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-2 pointer-events-none opacity-0 animate-[fadeIn_2s_ease-out_10s_forwards]">
+          <p className="text-[9px] text-white/25 tracking-[0.35em] uppercase font-light">Scroll to explore</p>
+          <div className="w-px h-8 bg-gradient-to-b from-[#D4AF37]/30 to-transparent" />
         </div>
 
         <style jsx global>{`
-          @keyframes fadeIn {
-            from { opacity: 0; }
-            to   { opacity: 1; }
-          }
+          @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+          .cesium-viewer-toolbar, .cesium-viewer-animationContainer,
+          .cesium-viewer-timelineContainer, .cesium-viewer-bottom { display: none !important; }
         `}</style>
       </div>
     </>
