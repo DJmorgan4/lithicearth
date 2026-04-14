@@ -14,11 +14,10 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: 'LithicEarth — Ancient Sites Archive',
-  description:
-    'A living archive of Earth's ancient landscapes. Document and explore archaeological sites, environmental anomalies, and geological formations worldwide.',
+  description: "A living archive of Earth's ancient landscapes. Document and explore archaeological sites, environmental anomalies, and geological formations worldwide.",
   openGraph: {
     title: 'LithicEarth',
-    description: 'A living archive of Earth's ancient landscapes.',
+    description: "A living archive of Earth's ancient landscapes.",
     siteName: 'LithicEarth',
   },
 };
