@@ -287,8 +287,6 @@ export default function PortalGlobe() {
   const [posts, setPosts] = useState<PublicPost[]>([]);
   const [stratumSites, setStratumSites] = useState<StratumSite[]>([])
   const [selectedStratumSite, setSelectedStratumSite] = useState<StratumSite | null>(null)
-  const [stratumSites, setStratumSites] = useState<StratumSite[]>([])
-  const [selectedStratumSite, setSelectedStratumSite] = useState<StratumSite | null>(null)
   const [projects, setProjects] = useState<Project[]>([]);
   const [copied, setCopied] = useState(false);
   const [cursorCoords, setCursorCoords] = useState<{ lat: number; lng: number } | null>(null);
