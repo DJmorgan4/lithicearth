@@ -48,6 +48,24 @@ interface StratumSite {
 }
 
 
+interface StratumSite {
+  id: string
+  name: string
+  latitude: number
+  longitude: number
+  source: string
+  site_type?: string
+  ceto_score?: number
+  ceto_tier?: string
+  esa_phase?: string
+  status: string
+  tags?: string[]
+  stratum_sensor_readings?: { sensor_type: string; value: number; unit: string; created_at: string }[]
+  stratum_observations?: { observation_type: string; notes: string; created_at: string }[]
+  stratum_documents?: { doc_type: string; title: string; url: string }[]
+}
+
+
 // ─── Constants ───────────────────────────────────────────────────────
 
 const DEFAULT_LAYERS: LayerConfig[] = [
@@ -220,6 +238,30 @@ function GlobeScene({
           </mesh>
         )
       })}
+
+      {/* STRATUM — Ceto site pins */}
+      {stratumSites.map(site => {
+        const phi   = (90 - site.latitude)  * (Math.PI / 180)
+        const theta = (site.longitude + 180) * (Math.PI / 180)
+        const r = 2.04
+        const pos = new THREE.Vector3(
+          -r * Math.sin(phi) * Math.cos(theta),
+           r * Math.cos(phi),
+          -r * Math.sin(phi) * Math.sin(theta),
+        )
+        const score = site.ceto_score ?? 50
+        const color = score < 40 ? '#5b9c6f' : score < 70 ? '#D4AF37' : '#c0503a'
+        return (
+          <mesh
+            key={site.id}
+            position={pos}
+            onClick={(e) => { e.stopPropagation(); onStratumSiteClick(site) }}
+          >
+            <sphereGeometry args={[0.014, 10, 10]} />
+            <meshBasicMaterial color={color} transparent opacity={0.9} />
+          </mesh>
+        )
+      })}
       <Stars radius={120} depth={60} count={6000} factor={3} saturation={0} fade speed={0.2} />
 
       <OrbitControls
@@ -245,6 +287,8 @@ export default function PortalGlobe() {
   const [posts, setPosts] = useState<PublicPost[]>([]);
   const [stratumSites, setStratumSites] = useState<StratumSite[]>([])
   const [selectedStratumSite, setSelectedStratumSite] = useState<StratumSite | null>(null)
+  const [stratumSites, setStratumSites] = useState<StratumSite[]>([])
+  const [selectedStratumSite, setSelectedStratumSite] = useState<StratumSite | null>(null)
   const [projects, setProjects] = useState<Project[]>([]);
   const [copied, setCopied] = useState(false);
   const [cursorCoords, setCursorCoords] = useState<{ lat: number; lng: number } | null>(null);
@@ -260,6 +304,14 @@ export default function PortalGlobe() {
     supabase.from('posts').select('id, lat, lng, title, category, image_url')
       .not('lat', 'is', null).limit(200)
       .then(({ data }) => { if (data) setPosts(data); });
+
+    supabase.from('stratum_sites').select(`
+      id, name, latitude, longitude, source, site_type,
+      ceto_score, ceto_tier, esa_phase, status, tags,
+      stratum_sensor_readings(sensor_type, value, unit, created_at),
+      stratum_observations(observation_type, notes, created_at),
+      stratum_documents(doc_type, title, url)
+    `).eq('status', 'active').then(({ data }) => { if (data) setStratumSites(data as StratumSite[]) });
 
     supabase.from('stratum_sites').select(`
       id, name, latitude, longitude, source, site_type,
@@ -563,6 +615,57 @@ export default function PortalGlobe() {
           </div>
         )}
 
+
+        {/* STRATUM site detail panel */}
+        {selectedStratumSite && (
+          <div className="absolute top-4 right-4 w-72 bg-[#0d1410] border border-[#D4AF37]/30 z-20">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[#D4AF37]/20">
+              <span className="text-[#D4AF37] text-[9px] tracking-[0.25em] font-light">STRATUM · CETO SITE</span>
+              <button onClick={() => setSelectedStratumSite(null)} className="text-[#3a4a3e] hover:text-[#c8c4ba]">
+                <X size={11} />
+              </button>
+            </div>
+            <div className="p-4 space-y-2.5">
+              <p className="text-[#c8c4ba] text-sm font-light">{selectedStratumSite.name}</p>
+              {selectedStratumSite.ceto_score !== undefined && (
+                <div className="flex items-center gap-2">
+                  <span className="text-[#3a4a3e] text-[9px] tracking-[0.2em]">CETO SCORE</span>
+                  <span className={`text-xs font-light ${
+                    selectedStratumSite.ceto_score < 40 ? "text-[#5b9c6f]" :
+                    selectedStratumSite.ceto_score < 70 ? "text-[#D4AF37]" : "text-[#c0503a]"
+                  }`}>{selectedStratumSite.ceto_score} — {selectedStratumSite.ceto_tier}</span>
+                </div>
+              )}
+              {selectedStratumSite.esa_phase && (
+                <ReadoutRow label="ESA PHASE" value={selectedStratumSite.esa_phase} source="Ceto Interactive" />
+              )}
+              <ReadoutRow label="LAT" value={`${selectedStratumSite.latitude}°`} />
+              <ReadoutRow label="LNG" value={`${selectedStratumSite.longitude}°`} />
+              {selectedStratumSite.site_type && (
+                <ReadoutRow label="TYPE" value={selectedStratumSite.site_type} />
+              )}
+              {selectedStratumSite.stratum_sensor_readings && selectedStratumSite.stratum_sensor_readings.length > 0 && (
+                <div className="border-t border-[#1a2a1e] pt-2.5">
+                  <p className="text-[#3a4a3e] text-[9px] tracking-[0.2em] mb-2">LIVE SENSOR DATA</p>
+                  {selectedStratumSite.stratum_sensor_readings.slice(0, 4).map((r, i) => (
+                    <ReadoutRow key={i} label={r.sensor_type.toUpperCase()} value={`${r.value} ${r.unit ?? ""}`} source="STRATUM" />
+                  ))}
+                </div>
+              )}
+              {selectedStratumSite.stratum_documents && selectedStratumSite.stratum_documents.length > 0 && (
+                <div className="border-t border-[#1a2a1e] pt-2.5">
+                  <p className="text-[#3a4a3e] text-[9px] tracking-[0.2em] mb-2">DOCUMENTS</p>
+                  {selectedStratumSite.stratum_documents.map((d, i) => (
+                    <a key={i} href={d.url} target="_blank" rel="noreferrer"
+                      className="block text-[#5b7c6f] text-[10px] font-light hover:text-[#D4AF37] transition-colors mb-1">
+                      {d.title} ({d.doc_type})
+                    </a>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* STRATUM site detail panel */}
         {selectedStratumSite && (
