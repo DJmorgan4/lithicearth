@@ -37,8 +37,6 @@ const SITES = [
     img: 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e7/Everest_North_Face_toward_Base_Camp_Tibet_Luca_Galuzzi_2006.jpg/1280px-Everest_North_Face_toward_Base_Camp_Tibet_Luca_Galuzzi_2006.jpg' },
 ] as const;
 
-// Correct coordinate formula for Three.js SphereGeometry UV mapping
-// phi=0 at north pole, theta=0 at back of sphere wrapping CCW
 function latLonToVec3(lat: number, lon: number, r = 1.0): THREE.Vector3 {
   const phi   = (90 - lat)  * (Math.PI / 180);
   const theta = (lon + 180) * (Math.PI / 180);
@@ -64,12 +62,20 @@ export function Hero({ onSignInClick }: HeroProps) {
 
   const [booted,  setBooted]  = useState(false);
   const [siteIdx, setSiteIdx] = useState(0);
-  const [phase,   setPhase]   = useState<'globe'|'photo'>('globe');
   const [labelOn, setLabelOn] = useState(false);
   const [descOn,  setDescOn]  = useState(false);
   const [imgOk,   setImgOk]   = useState(true);
+  const [cardOn,  setCardOn]  = useState(false);
 
   const site = SITES[siteIdx];
+
+  // Preload all images
+  useEffect(() => {
+    SITES.forEach((s) => {
+      const img = new Image();
+      img.src = s.img;
+    });
+  }, []);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -137,7 +143,7 @@ export function Hero({ onSignInClick }: HeroProps) {
     const sun = new THREE.DirectionalLight(0xfff8f0, 3.0);
     sun.position.set(5, 2, 4); scene.add(sun);
 
-    // Markers as globe children (rotate with it)
+    // Markers
     const markerGroup = new THREE.Group();
     globe.add(markerGroup);
     const dots: THREE.Mesh[] = [], rings: THREE.Mesh[] = [];
@@ -164,7 +170,7 @@ export function Hero({ onSignInClick }: HeroProps) {
       camFrom: new THREE.Vector3(0,0,2.8), camTo: new THREE.Vector3(0,0,2.8),
       camCur:  new THREE.Vector3(0,0,2.8), tarFrom: new THREE.Vector3(),
       tarTo: new THREE.Vector3(), tarCur: new THREE.Vector3(),
-      t:1.0, dur:5000, start:0, pulse:0,
+      t:1.0, dur:9000, start:0, pulse:0,
       timer: null as ReturnType<typeof setTimeout>|null, dead:false,
     };
     stRef.current = st;
@@ -177,7 +183,7 @@ export function Hero({ onSignInClick }: HeroProps) {
       st.camFrom.copy(st.camCur); st.tarFrom.copy(st.tarCur);
       st.camTo.copy(camForSite(s.lat, s.lon));
       st.tarTo.set(0,0,0); st.t=0;
-      st.dur = instant ? 800 : 5000;
+      st.dur = instant ? 1200 : 9000;
       st.start = performance.now();
 
       dots.forEach((d,i) => {
@@ -188,25 +194,30 @@ export function Hero({ onSignInClick }: HeroProps) {
       });
 
       idxRef.current=idx; setSiteIdx(idx);
-      setLabelOn(false); setPhase('globe'); setDescOn(false); setImgOk(true);
+      setLabelOn(false); setDescOn(false); setCardOn(false); setImgOk(true);
+
       if (st.timer) clearTimeout(st.timer);
 
-      const fly = instant ? 0 : 5000;
+      const fly = instant ? 0 : 9000;
       st.timer = setTimeout(() => {
-        if (st.dead) return; setLabelOn(true);
+        if (st.dead) return;
+        setLabelOn(true);
         st.timer = setTimeout(() => {
-          if (st.dead) return; setPhase('photo');
+          if (st.dead) return;
+          setCardOn(true);
           st.timer = setTimeout(() => {
-            if (st.dead) return; setDescOn(true);
+            if (st.dead) return;
+            setDescOn(true);
             st.timer = setTimeout(() => {
-              if (st.dead) return; setDescOn(false); setLabelOn(false);
+              if (st.dead) return;
+              setDescOn(false); setLabelOn(false); setCardOn(false);
               st.timer = setTimeout(() => {
-                if (st.dead) return; setPhase('globe');
-                setTimeout(() => goTo((idx+1)%SITES.length), 600);
-              }, 800);
-            }, 9000);
-          }, 1500);
-        }, instant ? 400 : 2500);
+                if (st.dead) return;
+                goTo((idx+1)%SITES.length);
+              }, 1200);
+            }, 10000);
+          }, 1800);
+        }, instant ? 400 : 2800);
       }, fly);
     };
 
@@ -266,27 +277,12 @@ export function Hero({ onSignInClick }: HeroProps) {
   return (
     <div className="relative h-screen w-full overflow-hidden" style={{ background:'#020508' }}>
 
-      <div ref={mountRef} className="absolute inset-0"
-        style={{ opacity: phase==='photo'?0:1, transition:'opacity 2s ease' }} />
+      {/* Globe — always visible, never fades */}
+      <div ref={mountRef} className="absolute inset-0" />
 
-      <div className="absolute inset-0" style={{ opacity: phase==='photo'?1:0, transition:'opacity 2s ease' }}>
-        {imgOk ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img key={site.img} src={site.img} alt={site.name}
-            className="absolute inset-0 w-full h-full object-cover"
-            onError={() => setImgOk(false)}
-            style={{ filter:'brightness(0.68) contrast(1.1) saturate(1.05)',
-              transform: phase==='photo'?'scale(1.06)':'scale(1.0)', transition:'transform 16s ease' }} />
-        ) : (
-          <div className="absolute inset-0" style={{ background:'#020508' }} />
-        )}
-        <div className="absolute inset-0 pointer-events-none" style={{ background:'linear-gradient(to bottom,rgba(0,0,0,0.5) 0%,transparent 22%,transparent 50%,rgba(0,0,0,0.96) 100%)' }} />
-        <div className="absolute inset-0 pointer-events-none" style={{ background:'linear-gradient(to right,rgba(0,0,0,0.42) 0%,transparent 55%)' }} />
-      </div>
-
+      {/* Vignette */}
       <div className="absolute inset-0 pointer-events-none z-10" style={{
         background:'radial-gradient(ellipse 82% 82% at 50% 50%, transparent 28%, rgba(2,5,8,0.78) 100%)',
-        opacity: phase==='photo'?0:1, transition:'opacity 2s ease',
       }} />
       <div className="absolute top-0 left-0 right-0 pointer-events-none z-10"
         style={{ height:120, background:'linear-gradient(to bottom,rgba(2,5,8,0.85) 0%,transparent 100%)' }} />
@@ -348,6 +344,32 @@ export function Hero({ onSignInClick }: HeroProps) {
           transition:'opacity 1.6s ease,transform 1.6s ease' }}>{site.desc}</p>
       </div>
 
+      {/* Image card — bottom right, never fullscreen */}
+      {cardOn && imgOk && (
+        <div className="absolute z-20"
+          style={{ right:40, bottom:108, width:260,
+            opacity:cardOn?1:0, transform:cardOn?'translateY(0)':'translateY(12px)',
+            transition:'opacity 1.4s ease, transform 1.4s ease',
+            border:'0.5px solid rgba(212,175,55,0.2)',
+            background:'rgba(2,5,8,0.6)', backdropFilter:'blur(6px)' }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            key={site.img}
+            src={site.img}
+            alt={site.name}
+            className="w-full object-cover"
+            style={{ height:148, filter:'brightness(0.75) contrast(1.05) saturate(1.05)' }}
+            onError={() => setImgOk(false)}
+          />
+          <div style={{ padding:'10px 14px 12px' }}>
+            <p style={{ fontSize:7, letterSpacing:'0.3em', textTransform:'uppercase',
+              color:'rgba(212,175,55,0.4)', marginBottom:4 }}>Field Image</p>
+            <p style={{ fontSize:'0.72rem', color:'rgba(255,255,255,0.6)',
+              fontFamily:'"Cormorant Garamond",Georgia,serif', fontStyle:'italic' }}>{site.name}</p>
+          </div>
+        </div>
+      )}
+
       {/* CTA */}
       <div className="absolute z-20"
         style={{ bottom:34, left:40, opacity:descOn?1:0,
@@ -364,7 +386,7 @@ export function Hero({ onSignInClick }: HeroProps) {
         </button>
       </div>
 
-      {/* Progress */}
+      {/* Progress dots */}
       <div className="absolute z-20 pointer-events-none"
         style={{ bottom:80, right:32, opacity:booted?1:0, transition:'opacity 1s ease 1s' }}>
         <div style={{ display:'flex', flexDirection:'column', gap:6, alignItems:'flex-end' }}>
