@@ -209,12 +209,30 @@ def analyze(lat: float, lng: float):
     except Exception as e:
         measurements["thermal"] = {"status": "error", "detail": str(e)}
 
-    # ── Data quality assessment ──
-    found = [k for k, v in measurements.items() if isinstance(v, dict) and v.get("status") == "found"]
-    total_possible = 4  # ndvi, sar, elevation, thermal
-    data_quality = round(len([k for k in ["ndvi", "sar", "elevation", "thermal"] if measurements.get(k, {}).get("status") == "found"]) / total_possible, 2)
+    # ── Data quality assessment — coverage vs measurement quality ──
+    pixel_methods = {"point_query", "pixel_sample_B08_B04", "pixel_sample_ST_B10_collection2", "cog_pixel_sample"}
+    
+    available = 0
+    pixel_measured = 0
+    measurement_quality_detail = {}
 
-    coverage = "high" if data_quality >= 0.75 else "medium" if data_quality >= 0.5 else "low"
+    for key in ["ndvi", "sar", "elevation", "thermal"]:
+        m = measurements.get(key, {})
+        if not isinstance(m, dict):
+            continue
+        if m.get("status") == "found":
+            available += 1
+            method = m.get("method", "")
+            if method in pixel_methods:
+                pixel_measured += 1
+                measurement_quality_detail[key] = f"pixel ({m.get('resolution_m', '?')}m)"
+            else:
+                measurement_quality_detail[key] = f"scene/approx ({m.get('resolution_m', '?')}m)"
+
+    coverage_quality = round(available / 4, 2)
+    measurement_quality = round(pixel_measured / 4, 2)
+    coverage = "high" if coverage_quality >= 0.75 else "medium" if coverage_quality >= 0.5 else "low"
+    data_quality = coverage_quality  # keep for compat
 
     # Build source trace
     source_trace = []
@@ -238,6 +256,9 @@ def analyze(lat: float, lng: float):
         "data_quality": data_quality,
         "coverage": coverage,
         "source_trace": source_trace,
+        "coverage_quality": coverage_quality,
+        "measurement_quality": measurement_quality,
+        "measurement_quality_detail": measurement_quality_detail,
         "anomaly_score": None,
-        "note": "Measurements only — anomaly scoring pending pixel-level QA"
+        "note": "Coverage confirmed. Pixel-level measurement pending for: " + ", ".join([k for k in ["ndvi","sar","thermal"] if measurement_quality_detail.get(k,"").startswith("scene")])
     }
