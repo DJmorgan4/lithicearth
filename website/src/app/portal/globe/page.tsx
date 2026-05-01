@@ -234,6 +234,7 @@ export default function PortalGlobe() {
     const { error } = await supabase.from('portal_observations').insert({
       user_id: user.id, source: 'manual', type: 'anomaly',
       lat: readout.lat, lng: readout.lng, flagged: true,
+      geometry: `POINT(${readout.lng} ${readout.lat})`,
       properties: { elevation: readout.elevation, ndvi: readout.ndvi, magnetic: readout.magnetic, gravity: readout.gravity, sarVV: readout.sarVV, radon: readout.radon, geology: readout.geology, active_layers: layers.filter(l => l.active).map(l => l.id) },
     });
     setFlagging(false);
