@@ -176,6 +176,8 @@ export default function PortalGlobe() {
   const [showProjectPicker, setShowProjectPicker] = useState(false);
   const [savingProject, setSavingProject] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [savingSite, setSavingSiteState] = useState(false);
+  const [siteSaved, setSiteSaved] = useState(false);
 
   const supabase = createClient();
 
@@ -248,6 +250,21 @@ export default function PortalGlobe() {
     setShowProjectPicker(false);
     if (!error) showToast('Added to project');
     else { showToast('Error saving'); console.error(error); }
+  };
+
+  const saveAsSite = async () => {
+    if (!readout || savingSite) return;
+    setSavingSiteState(true);
+    const { error } = await supabase.from('sites').insert({
+      lat: readout.lat,
+      lng: readout.lng,
+      created_from: 'lithic',
+      status: 'new',
+      name: `Site @ ${readout.lat}, ${readout.lng}`,
+    });
+    setSavingSiteState(false);
+    if (!error) { setSiteSaved(true); showToast('Site saved to pipeline'); setTimeout(() => setSiteSaved(false), 3000); }
+    else { showToast('Error saving site'); console.error(error); }
   };
 
   const toggleLayer = (id: string) => setLayers(p => p.map(l => l.id === id ? { ...l, active: !l.active } : l));
@@ -431,7 +448,7 @@ export default function PortalGlobe() {
               </div>
             )}
 
-            <div className="border-t border-[#1a2a1e] grid grid-cols-2 gap-px bg-[#1a2a1e]">
+            <div className="border-t border-[#1a2a1e] grid grid-cols-3 gap-px bg-[#1a2a1e]">
               <button onClick={flagAnomaly} disabled={flagging || flagDone} className="bg-[#0d1410] px-3 py-2.5 flex items-center justify-center gap-1.5 hover:bg-[#111a14] transition-colors disabled:opacity-50">
                 {flagDone ? <Check size={10} className="text-[#5b7c6f]" /> : flagging ? <AlertCircle size={10} className="text-[#5b7c6f] animate-pulse" /> : <Flag size={10} className="text-[#5b7c6f]" />}
                 <span className="text-[#5b7c6f] text-[9px] tracking-[0.12em] font-light">{flagDone ? 'FLAGGED' : flagging ? 'SAVING...' : 'FLAG ANOMALY'}</span>
@@ -439,6 +456,10 @@ export default function PortalGlobe() {
               <button onClick={() => setShowProjectPicker(!showProjectPicker)} className="bg-[#0d1410] px-3 py-2.5 flex items-center justify-center gap-1.5 hover:bg-[#111a14] transition-colors">
                 <FolderPlus size={10} className="text-[#5b7c6f]" />
                 <span className="text-[#5b7c6f] text-[9px] tracking-[0.12em] font-light">ADD TO PROJECT</span>
+              </button>
+              <button onClick={saveAsSite} disabled={savingSite || siteSaved} className="bg-[#0d1410] px-3 py-2.5 flex items-center justify-center gap-1.5 hover:bg-[#111a14] transition-colors disabled:opacity-50">
+                {siteSaved ? <Check size={10} className="text-[#5b7c6f]" /> : <FolderPlus size={10} className="text-[#5b7c6f]" />}
+                <span className="text-[#5b7c6f] text-[9px] tracking-[0.12em] font-light">{siteSaved ? 'SAVED' : savingSite ? 'SAVING...': 'SAVE SITE'}</span>
               </button>
             </div>
 
