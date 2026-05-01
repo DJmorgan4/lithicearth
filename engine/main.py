@@ -75,14 +75,17 @@ def analyze(lat: float, lng: float):
     # Elevation — USGS 3DEP for US, SRTM fallback globally
     try:
         if -125 <= lng <= -66 and 24 <= lat <= 50:
-            elev_val = py3dep.elevation_bycoords((lng, lat), crs="EPSG:4326")
-            results["elevation"] = {
-                "value": round(float(elev_val), 1),
-                "unit": "m",
-                "source": "USGS 3DEP (1m)",
-                "status": "found"
-            }
-        else:
+            try:
+                elev_val = py3dep.elevation_bycoords((lng, lat), crs="EPSG:4326")
+                results["elevation"] = {
+                    "value": round(float(elev_val), 1),
+                    "unit": "m",
+                    "source": "USGS 3DEP (1m)",
+                    "status": "found"
+                }
+            except Exception:
+                pass
+        if "elevation" not in results:
             r = httpx.get(f"https://api.open-elevation.com/api/v1/lookup?locations={lat},{lng}", timeout=8)
             elev_data = r.json()
             elevation = elev_data["results"][0]["elevation"]
