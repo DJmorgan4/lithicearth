@@ -393,6 +393,69 @@ export default function PortalGlobe() {
                         <span className="text-[#5b7c6f] text-[9px] font-light">{intel.layers.sentinel1_sar.orbit} · {intel.layers.sentinel1_sar.date?.slice(0,10)}</span>
                       </div>
                     )}
+                    {intel.summary {intel.summary && (
+                      <p className="text-[#e8e4da] text-[10px] font-light leading-snug border-l-2 border-[#5b7c6f] pl-2 mb-2">{intel.summary}</p>
+                    )}
+                    {intel.layers?.elevation?.status === 'found' && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-[#3a4a3e] text-[9px] tracking-[0.2em]">ELEVATION</span>
+                        <span className="text-[#5b7c6f] text-[9px] font-light">{intel.layers.elevation.value}m · {intel.layers.elevation.source}</span>
+                      </div>
+                    )}
+                    {intel.layers?.sentinel2?.ndvi_approx != null && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-[#3a4a3e] text-[9px] tracking-[0.2em]">NDVI</span>
+                        <span className="text-[9px] font-light" style={{color: intel.layers.sentinel2.ndvi_approx > 0.5 ? '#4ade80' : intel.layers.sentinel2.ndvi_approx > 0.2 ? '#fbbf24' : '#f87171'}}>{intel.layers.sentinel2.ndvi_approx}</span>
+                      </div>
+                    )}
+                    {intel.layers?.landsat_thermal?.status === 'found' && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-[#3a4a3e] text-[9px] tracking-[0.2em]">THERMAL</span>
+                        <span className="text-[#5b7c6f] text-[9px] font-light">Landsat-9 · {intel.layers.landsat_thermal.date?.slice(0,10)}</span>
+                      </div>
+                    )}
+                    {intel.insights?.map((ins: string, i: number) => ({intel.summary && (
+                      <p className="text-[#e8e4da] text-[10px] font-light leading-snug border-l-2 border-[#5b7c6f] pl-2 mb-2">{intel.summary}</p>
+                    )}
+                    {intel.layers?.elevation?.status === 'found' && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-[#3a4a3e] text-[9px] tracking-[0.2em]">ELEVATION</span>
+                        <span className="text-[#5b7c6f] text-[9px] font-light">{intel.layers.elevation.value}m · {intel.layers.elevation.source}</span>
+                      </div>
+                    )}
+                    {intel.layers?.sentinel2?.ndvi_approx != null && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-[#3a4a3e] text-[9px] tracking-[0.2em]">NDVI</span>
+                        <span className="text-[9px] font-light" style={{color: intel.layers.sentinel2.ndvi_approx > 0.5 ? '#4ade80' : intel.layers.sentinel2.ndvi_approx > 0.2 ? '#fbbf24' : '#f87171'}}>{intel.layers.sentinel2.ndvi_approx}</span>
+                      </div>
+                    )}
+                    {intel.layers?.landsat_thermal?.status === 'found' && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-[#3a4a3e] text-[9px] tracking-[0.2em]">THERMAL</span>
+                        <span className="text-[#5b7c6f] text-[9px] font-light">Landsat-9 · {intel.layers.landsat_thermal.date?.slice(0,10)}</span>
+                      </div>
+                    )}
+                    {intel.insights?.map((ins: string, i: number) => ( (<p className="text-[#e8e4da] text-[10px] font-light leading-snug border-l-2 border-[#5b7c6f] pl-2 mb-2">{intel.summary}</p>)}{intel.layers?.elevation?.status === 'found' && (<div className="flex items-center justify-between"><span className="text-[#3a4a3e] text-[9px] tracking-[0.2em]">ELEVATION</span><span className="text-[#5b7c6f] text-[9px] font-light">{intel.layers.elevation.value}m · {intel.layers.elevation.source}</span></div>)}{intel.layers?.sentinel2?.ndvi_approx != null && (<div className="flex items-center justify-between"><span className="text-[#3a4a3e] text-[9px] tracking-[0.2em]">NDVI</span><span className="text-[9px] font-light" style={{color: intel.layers.sentinel2.ndvi_approx > 0.5 ? '#4ade80' : intel.layers.sentinel2.ndvi_approx > 0.2 ? '#fbbf24' : '#f87171'}}>{intel.layers.sentinel2.ndvi_approx}</span></div>)}{intel.summary && (
+                      <p className="text-[#e8e4da] text-[10px] font-light leading-snug border-l-2 border-[#5b7c6f] pl-2 mb-2">{intel.summary}</p>
+                    )}
+                    {intel.layers?.elevation?.status === 'found' && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-[#3a4a3e] text-[9px] tracking-[0.2em]">ELEVATION</span>
+                        <span className="text-[#5b7c6f] text-[9px] font-light">{intel.layers.elevation.value}m · {intel.layers.elevation.source}</span>
+                      </div>
+                    )}
+                    {intel.layers?.sentinel2?.ndvi_approx != null && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-[#3a4a3e] text-[9px] tracking-[0.2em]">NDVI</span>
+                        <span className="text-[9px] font-light" style={{color: intel.layers.sentinel2.ndvi_approx > 0.5 ? '#4ade80' : intel.layers.sentinel2.ndvi_approx > 0.2 ? '#fbbf24' : '#f87171'}}>{intel.layers.sentinel2.ndvi_approx}</span>
+                      </div>
+                    )}
+                    {intel.layers?.landsat_thermal?.status === 'found' && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-[#3a4a3e] text-[9px] tracking-[0.2em]">THERMAL</span>
+                        <span className="text-[#5b7c6f] text-[9px] font-light">Landsat-9 · {intel.layers.landsat_thermal.date?.slice(0,10)}</span>
+                      </div>
+                    )}
                     {intel.insights?.map((ins: string, i: number) => (
                       <p key={i} className="text-[#7a8a7d] text-[9px] font-light leading-snug border-l border-[#1a2a1e] pl-2">{ins}</p>
                     ))}
