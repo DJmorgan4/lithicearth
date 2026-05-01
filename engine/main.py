@@ -2,7 +2,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pystac_client import Client
 import httpx
-import py3dep
 
 app = FastAPI(title="Lithic Engine", version="1.0.0")
 
@@ -76,7 +75,6 @@ def analyze(lat: float, lng: float):
     try:
         if -125 <= lng <= -66 and 24 <= lat <= 50:
             try:
-                elev_val = py3dep.elevation_bycoords((lng, lat), crs="EPSG:4326")
                 results["elevation"] = {
                     "value": round(float(elev_val), 1),
                     "unit": "m",
