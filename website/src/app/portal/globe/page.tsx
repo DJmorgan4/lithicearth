@@ -365,36 +365,62 @@ export default function PortalGlobe() {
                         {intel.score}/8 · {intel.confidence != null ? Math.round(intel.confidence * 100) + '%' : 'pending'} confidence
                       </span>
                     </div>
-                    {intel.layers?.sentinel2?.status === 'found' && (
+                    {/* Support both old layers.* and new measurements.* response format */}
+                    {(intel.measurements?.ndvi?.status === 'found' || intel.layers?.sentinel2?.status === 'found') && (
                       <div className="flex items-center justify-between">
                         <span className="text-[#3a4a3e] text-[9px] tracking-[0.2em]">SENTINEL-2</span>
-                        <span className="text-[#5b7c6f] text-[9px] font-light">{intel.layers.sentinel2.cloud_cover?.toFixed(1)}% cloud · {intel.layers.sentinel2.date?.slice(0,10)}</span>
-                      </div>
-                    )}
-                    {intel.layers?.sentinel2?.ndvi_approx != null && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-[#3a4a3e] text-[9px] tracking-[0.2em]">NDVI</span>
-                        <span className="text-[9px] font-light" style={{color: intel.layers.sentinel2.ndvi_approx > 0.5 ? '#4ade80' : intel.layers.sentinel2.ndvi_approx > 0.2 ? '#fbbf24' : '#f87171'}}>
-                          {intel.layers.sentinel2.ndvi_approx}
+                        <span className="text-[#5b7c6f] text-[9px] font-light">
+                          {(intel.measurements?.sentinel2_meta?.cloud_cover ?? intel.layers?.sentinel2?.cloud_cover)?.toFixed(1)}% cloud · {(intel.measurements?.sentinel2_meta?.date ?? intel.layers?.sentinel2?.date)?.slice(0,10)}
                         </span>
                       </div>
                     )}
-                    {intel.layers?.elevation?.status === 'found' && (
+                    {(intel.measurements?.ndvi?.value != null || intel.layers?.sentinel2?.ndvi_approx != null) && (() => {
+                      const ndvi = intel.measurements?.ndvi?.value ?? intel.layers?.sentinel2?.ndvi_approx
+                      const method = intel.measurements?.ndvi?.method
+                      return (
+                        <div className="flex items-center justify-between">
+                          <span className="text-[#3a4a3e] text-[9px] tracking-[0.2em]">NDVI</span>
+                          <div className="text-right">
+                            <span className="text-[9px] font-light" style={{color: ndvi > 0.5 ? '#4ade80' : ndvi > 0.2 ? '#fbbf24' : '#f87171'}}>{ndvi}</span>
+                            {method && <span className="block text-[#2a3a2e] text-[8px]">{method === 'pixel_sample_B08_B04' ? '10m pixel' : 'scene est.'}</span>}
+                          </div>
+                        </div>
+                      )
+                    })()}
+                    {(intel.measurements?.elevation?.status === 'found' || intel.layers?.elevation?.status === 'found') && (
                       <div className="flex items-center justify-between">
                         <span className="text-[#3a4a3e] text-[9px] tracking-[0.2em]">ELEVATION</span>
-                        <span className="text-[#5b7c6f] text-[9px] font-light">{intel.layers.elevation.value}m · {intel.layers.elevation.source}</span>
+                        <div className="text-right">
+                          <span className="text-[#5b7c6f] text-[9px] font-light">{intel.measurements?.elevation?.value ?? intel.layers?.elevation?.value}m</span>
+                          <span className="block text-[#2a3a2e] text-[8px]">{intel.measurements?.elevation?.source ?? intel.layers?.elevation?.source}</span>
+                        </div>
                       </div>
                     )}
-                    {intel.layers?.sentinel1_sar?.status === 'found' && (
+                    {(intel.measurements?.sar?.status === 'found' || intel.layers?.sentinel1_sar?.status === 'found') && (
                       <div className="flex items-center justify-between">
                         <span className="text-[#3a4a3e] text-[9px] tracking-[0.2em]">SAR</span>
-                        <span className="text-[#5b7c6f] text-[9px] font-light">{intel.layers.sentinel1_sar.orbit} · {intel.layers.sentinel1_sar.date?.slice(0,10)}</span>
+                        <span className="text-[#5b7c6f] text-[9px] font-light">
+                          {intel.measurements?.sar?.orbit ?? intel.layers?.sentinel1_sar?.orbit} · {(intel.measurements?.sar?.acquired ?? intel.layers?.sentinel1_sar?.date)?.slice(0,10)}
+                        </span>
                       </div>
                     )}
-                    {intel.layers?.landsat_thermal?.status === 'found' && (
+                    {(intel.measurements?.thermal?.status === 'found' || intel.layers?.landsat_thermal?.status === 'found') && (
                       <div className="flex items-center justify-between">
                         <span className="text-[#3a4a3e] text-[9px] tracking-[0.2em]">THERMAL</span>
-                        <span className="text-[#5b7c6f] text-[9px] font-light">Landsat-9 · {intel.layers.landsat_thermal.date?.slice(0,10)}</span>
+                        <div className="text-right">
+                          {intel.measurements?.thermal?.value != null
+                            ? <span className="text-[#5b7c6f] text-[9px] font-light">{intel.measurements.thermal.value}°C · 30m</span>
+                            : <span className="text-[#5b7c6f] text-[9px] font-light">Landsat-9 · {(intel.measurements?.thermal?.acquired ?? intel.layers?.landsat_thermal?.date)?.slice(0,10)}</span>
+                          }
+                        </div>
+                      </div>
+                    )}
+                    {intel.measurement_quality != null && (
+                      <div className="flex items-center justify-between border-t border-[#1a2a1e] pt-2">
+                        <span className="text-[#3a4a3e] text-[9px] tracking-[0.2em]">MEAS. QUALITY</span>
+                        <span className="text-[9px] font-light" style={{color: intel.measurement_quality >= 0.75 ? '#4ade80' : intel.measurement_quality >= 0.5 ? '#fbbf24' : '#f87171'}}>
+                          {Math.round(intel.measurement_quality * 100)}%
+                        </span>
                       </div>
                     )}
                     {intel.insights?.map((ins: string, i: number) => (
