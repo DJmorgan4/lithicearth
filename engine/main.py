@@ -93,6 +93,7 @@ def analyze(lat: float, lng: float):
                 "acquired": acquired,
                 "resolution_m": 10,
                 "method": ndvi_method,
+                "pixel_error": ndvi_pixel_error if "ndvi_pixel_error" in dir() else None,
                 "bands": {"B04_red": b04_val, "B08_nir": b08_val} if b04_val else None,
                 "quality": {"cloud_cover_scene_pct": cloud_cover},
                 "status": "found"
