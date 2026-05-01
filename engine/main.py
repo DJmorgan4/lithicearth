@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pystac_client import Client
 import httpx
+import py3dep
 
 app = FastAPI(title="Lithic Engine", version="1.0.0")
 
@@ -21,7 +22,7 @@ def analyze(lat: float, lng: float):
     results = {}
     catalog = Client.open("https://earth-search.aws.element84.com/v1")
 
-    # Sentinel-2 optical + NDVI
+    # Sentinel-2 optical + NDVI approx
     try:
         search = catalog.search(
             collections=["sentinel-2-l2a"],
@@ -33,7 +34,6 @@ def analyze(lat: float, lng: float):
         if items:
             item = items[0]
             props = item.properties
-            # Approximate NDVI from scene-level metadata
             ndvi_approx = None
             veg = props.get("s2:vegetation_percentage")
             if veg is not None:
@@ -72,15 +72,21 @@ def analyze(lat: float, lng: float):
     except Exception as e:
         results["sentinel1_sar"] = {"status": "error", "detail": str(e)}
 
-    # Elevation from Open-Elevation API
+    # Elevation — USGS 3DEP for US, SRTM fallback globally
     try:
-        r = httpx.get(
-            f"https://api.open-elevation.com/api/v1/lookup?locations={lat},{lng}",
-            timeout=8
-        )
-        elev_data = r.json()
-        elevation = elev_data["results"][0]["elevation"]
-        results["elevation"] = {"value": elevation, "unit": "m", "source": "SRTM", "status": "found"}
+        if -125 <= lng <= -66 and 24 <= lat <= 50:
+            elev_val = py3dep.elevation_bycoords((lng, lat), crs="EPSG:4326")
+            results["elevation"] = {
+                "value": round(float(elev_val), 1),
+                "unit": "m",
+                "source": "USGS 3DEP (1m)",
+                "status": "found"
+            }
+        else:
+            r = httpx.get(f"https://api.open-elevation.com/api/v1/lookup?locations={lat},{lng}", timeout=8)
+            elev_data = r.json()
+            elevation = elev_data["results"][0]["elevation"]
+            results["elevation"] = {"value": elevation, "unit": "m", "source": "SRTM", "status": "found"}
     except Exception:
         results["elevation"] = {"status": "unavailable"}
 
@@ -123,7 +129,6 @@ def analyze(lat: float, lng: float):
         elif cc < 20:
             score += 1
             insights.append(f"Good optical conditions — {cc:.0f}% cloud cover")
-
         ndvi = s2.get("ndvi_approx")
         if ndvi is not None:
             score += 1
@@ -145,10 +150,12 @@ def analyze(lat: float, lng: float):
     if elev.get("status") == "found":
         score += 1
         elev_val = elev.get("value", 0)
+        source = elev.get("source", "")
+        insights.append(f"Elevation {elev_val}m ({source})")
         if elev_val < 0:
             interpretation.append("Below sea level — coastal or below-grade location")
-        elif elev_val < 100:
-            interpretation.append("Low elevation terrain")
+        elif elev_val < 10:
+            interpretation.append("Near sea level — flood risk zone possible")
         elif elev_val > 2000:
             interpretation.append("High altitude terrain — mountainous zone")
 
@@ -156,16 +163,15 @@ def analyze(lat: float, lng: float):
         score += 1
         insights.append("Landsat-9 thermal coverage available")
 
-    # Build interpretation summary
     anomaly_flags = len(interpretation)
     if anomaly_flags >= 2:
         summary = "Multiple anomalous signals detected — recommend field verification"
     elif anomaly_flags == 1:
         summary = interpretation[0]
-    elif score >= 5:
+    elif score >= 6:
         summary = "Normal surface conditions — no anomalies flagged"
     else:
-        summary = "Insufficient data coverage for full analysis"
+        summary = "Partial coverage — additional data acquisition recommended"
 
     return {
         "location": {"lat": lat, "lng": lng},
