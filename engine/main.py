@@ -93,3 +93,8 @@ def analyze(lat: float, lng: float):
         "score": score,
         "confidence": round(min(score / 8, 1.0), 2)
     }
+
+
+@app.get("/health")
+def health():
+    return {"status": "alive", "engine": "Lithic v1"}
