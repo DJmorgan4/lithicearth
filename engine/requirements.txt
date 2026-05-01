@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+pystac-client
+planetary-computer
+rasterio
+rio-tiler
+geopandas
+shapely
+pyproj
+xarray
+rioxarray
