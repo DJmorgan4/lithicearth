@@ -2,14 +2,8 @@ fastapi
 uvicorn
 pystac-client
 planetary-computer
-rasterio
-rio-tiler
-rio-cogeo
 geopandas
 shapely
 pyproj
 xarray
-rioxarray
 httpx
-py3dep
-scipy
