@@ -9,11 +9,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'lat and lng required' }, { status: 400 })
   }
 
+  const engineUrl = process.env.GEO_API_URL || 'http://127.0.0.1:8000'
+
   try {
-    const res = await fetch(`http://127.0.0.1:8000/analyze?lat=${lat}&lng=${lng}`)
+    const res = await fetch(`${engineUrl}/analyze?lat=${lat}&lng=${lng}`, { signal: AbortSignal.timeout(15000) })
     const data = await res.json()
     return NextResponse.json(data)
   } catch {
-    return NextResponse.json({ error: 'Engine offline' }, { status: 503 })
+    return NextResponse.json({ error: 'Engine offline', score: null, confidence: null, insights: [], layers: {} }, { status: 503 })
   }
 }
