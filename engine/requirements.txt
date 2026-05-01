@@ -7,3 +7,5 @@ shapely
 pyproj
 xarray
 httpx
+rasterio
+rio-tiler
