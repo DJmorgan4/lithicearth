@@ -77,8 +77,8 @@ function GlobeScene({ posts, stratumSites, onGlobeClick, onMouseMove, onStratumS
   useEffect(() => {
     const loader = new THREE.TextureLoader();
     const urls = [
-      'https://unpkg.com/three-globe@2.31.2/example/img/earth-blue-marble.jpg',
-      'https://cdn.jsdelivr.net/npm/three-globe@2.31.2/example/img/earth-blue-marble.jpg',
+      '/earth.jpg',
+      '/earth.jpg',
     ];
     let done = false;
     const tryLoad = (i: number) => {
