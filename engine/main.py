@@ -25,6 +25,16 @@ def sample_cog_point(url: str, lng: float, lat: float):
     except Exception:
         return None
 
+def sample_ndvi_pixel(lng: float, lat: float, b04_url: str, b08_url: str):
+    from rio_tiler.io import Reader
+    with Reader(b04_url) as red_reader:
+        red = float(red_reader.point(lng, lat).data[0])
+    with Reader(b08_url) as nir_reader:
+        nir = float(nir_reader.point(lng, lat).data[0])
+    if red + nir == 0:
+        return None, red, nir
+    return round((nir - red) / (nir + red), 4), red, nir
+
 @app.get("/analyze")
 def analyze(lat: float, lng: float):
     measurements = {}
