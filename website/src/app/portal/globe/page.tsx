@@ -188,17 +188,9 @@ export default function PortalGlobe() {
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 3000); };
 
   const buildReadout = useCallback((lat: number, lng: number): PointReadout => {
-    const r: PointReadout = { lat, lng };
-    if (layers.find(l => l.id === 'terrain')?.active)  r.elevation = Math.round(100 + Math.random() * 400);
-    if (layers.find(l => l.id === 'ndvi')?.active)     r.ndvi      = Number((Math.random() * 0.8).toFixed(3));
-    if (layers.find(l => l.id === 'magnetic')?.active) r.magnetic  = Number((-50 + Math.random() * 100).toFixed(1));
-    if (layers.find(l => l.id === 'gravity')?.active)  r.gravity   = Number((-20 + Math.random() * 40).toFixed(1));
-    if (layers.find(l => l.id === 'sar')?.active)      r.sarVV     = Number((-15 + Math.random() * 10).toFixed(1));
-    if (layers.find(l => l.id === 'radon')?.active)    r.radon     = `Zone ${Math.ceil(Math.random() * 3)}`;
-    if (layers.find(l => l.id === 'geology')?.active)  r.geology   = 'Woodbine Fm.';
-    if (layers.find(l => l.id === 'lidar')?.active)    r.soil      = 'Silty clay loam';
-    return r;
-  }, [layers]);
+    // No synthetic values — all data comes from Lithic Engine real pixel measurements
+    return { lat, lng };
+  }, []);
 
   const handleGlobeClick = useCallback(async (lat: number, lng: number) => {
     setReadout(buildReadout(lat, lng));
