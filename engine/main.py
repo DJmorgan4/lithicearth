@@ -2,7 +2,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pystac_client import Client
 import httpx
-import numpy as np
 
 app = FastAPI(title="Lithic Engine", version="2.0.0")
 
@@ -17,13 +16,12 @@ app.add_middleware(
 def health():
     return {"status": "alive", "engine": "Lithic v2 — real pixel measurements"}
 
-def sample_cog_pixel(url: str, lat: float, lng: float) -> float | None:
-    """Sample a single pixel value from a Cloud Optimized GeoTIFF at lat/lng."""
+def sample_cog_point(url: str, lng: float, lat: float):
     try:
         from rio_tiler.io import Reader
-        with Reader(url) as cog:
-            img = cog.point(lng, lat)
-            return float(img.data[0])
+        with Reader(url) as r:
+            pt = r.point(lng, lat)
+            return float(pt.data[0])
     except Exception:
         return None
 
@@ -47,42 +45,46 @@ def analyze(lat: float, lng: float):
             acquired = item.datetime.isoformat() if item.datetime else None
             cloud_cover = props.get("eo:cloud_cover")
 
-            # Get COG URLs for B04 (red) and B08 (NIR)
-            b04_url = item.assets.get("red", item.assets.get("B04", None))
-            b08_url = item.assets.get("nir", item.assets.get("B08", None))
-
             ndvi_val = None
-            ndvi_method = "scene_metadata_approx"
+            ndvi_method = "unavailable"
+            ndvi_asset = None
+            b04_val = None
+            b08_val = None
 
-            if b04_url and b08_url:
-                b04_href = b04_url.href if hasattr(b04_url, 'href') else b04_url.get('href')
-                b08_href = b08_url.href if hasattr(b08_url, 'href') else b08_url.get('href')
+            # Try real COG pixel sample first
+            b04_asset = item.assets.get("red") or item.assets.get("B04")
+            b08_asset = item.assets.get("nir") or item.assets.get("B08")
 
-                b04 = sample_cog_pixel(b04_href, lat, lng)
-                b08 = sample_cog_pixel(b08_href, lat, lng)
+            if b04_asset and b08_asset:
+                b04_href = b04_asset.href if hasattr(b04_asset, 'href') else b04_asset.get('href')
+                b08_href = b08_asset.href if hasattr(b08_asset, 'href') else b08_asset.get('href')
 
-                if b04 is not None and b08 is not None and (b08 + b04) != 0:
-                    ndvi_val = round((b08 - b04) / (b08 + b04), 4)
+                b04_val = sample_cog_point(b04_href, lng, lat)
+                b08_val = sample_cog_point(b08_href, lng, lat)
+
+                if b04_val is not None and b08_val is not None and (b08_val + b04_val) != 0:
+                    ndvi_val = round((b08_val - b04_val) / (b08_val + b04_val), 4)
                     ndvi_method = "pixel_sample_B08_B04"
+                    ndvi_asset = "B08/B04 COG (10m)"
 
-            # Fallback to vegetation percentage approximation
+            # Fallback to scene metadata approximation
             if ndvi_val is None:
                 veg_pct = props.get("s2:vegetation_percentage")
                 if veg_pct is not None:
                     ndvi_val = round(0.1 + (float(veg_pct) / 100) * 0.7, 4)
-                    ndvi_method = "scene_vegetation_pct_approx"
+                    ndvi_method = "scene_metadata_derived"
+                    ndvi_asset = "scene_metadata"
 
             measurements["ndvi"] = {
                 "value": ndvi_val,
                 "unit": "index",
                 "source": "Sentinel-2 L2A",
-                "asset": "B08/B04 COG",
+                "asset": ndvi_asset,
                 "acquired": acquired,
                 "resolution_m": 10,
                 "method": ndvi_method,
-                "quality": {
-                    "cloud_cover_scene_pct": cloud_cover,
-                },
+                "bands": {"B04_red": b04_val, "B08_nir": b08_val} if b04_val else None,
+                "quality": {"cloud_cover_scene_pct": cloud_cover},
                 "status": "found"
             }
 
@@ -93,6 +95,8 @@ def analyze(lat: float, lng: float):
                 "platform": props.get("platform"),
                 "status": "found"
             }
+        else:
+            measurements["ndvi"] = {"status": "no_results"}
     except Exception as e:
         measurements["ndvi"] = {"status": "error", "detail": str(e)}
 
@@ -132,7 +136,7 @@ def analyze(lat: float, lng: float):
             )
             data = r.json()
             elev_val = data.get("value")
-            if elev_val is not None and elev_val != -1000000:
+            if elev_val is not None and float(elev_val) > -1000000:
                 measurements["elevation"] = {
                     "value": round(float(elev_val), 2),
                     "unit": "m",
@@ -143,8 +147,11 @@ def analyze(lat: float, lng: float):
                     "status": "found"
                 }
             else:
-                raise ValueError("EPQS returned no data")
+                raise ValueError("EPQS no data")
         else:
+            raise ValueError("outside US bounds")
+    except Exception:
+        try:
             r = httpx.get(
                 f"https://api.open-elevation.com/api/v1/lookup?locations={lat},{lng}",
                 timeout=8
@@ -160,10 +167,10 @@ def analyze(lat: float, lng: float):
                 "method": "point_query",
                 "status": "found"
             }
-    except Exception:
-        measurements["elevation"] = {"status": "unavailable"}
+        except Exception:
+            measurements["elevation"] = {"status": "unavailable"}
 
-    # ── Landsat-9 thermal — real surface temperature ──
+    # ── Landsat-9 thermal — real ST_B10 pixel ──
     try:
         search = catalog.search(
             collections=["landsat-c2-l2"],
@@ -175,17 +182,17 @@ def analyze(lat: float, lng: float):
         if items:
             item = items[0]
             acquired = item.datetime.isoformat() if item.datetime else None
+            cloud_cover = item.properties.get("eo:cloud_cover")
 
-            # Try to read ST_B10 surface temperature COG
-            st_asset = item.assets.get("ST_B10") or item.assets.get("st_b10")
             temp_celsius = None
             temp_method = "scene_coverage_confirmed"
+            raw_val = None
 
+            st_asset = item.assets.get("ST_B10") or item.assets.get("st_b10")
             if st_asset:
                 st_href = st_asset.href if hasattr(st_asset, 'href') else st_asset.get('href')
-                raw_val = sample_cog_pixel(st_href, lat, lng)
+                raw_val = sample_cog_point(st_href, lng, lat)
                 if raw_val is not None and raw_val > 0:
-                    # USGS Collection 2 ST scale: multiply by 0.00341802, add 149.0 = Kelvin
                     kelvin = raw_val * 0.00341802 + 149.0
                     temp_celsius = round(kelvin - 273.15, 2)
                     temp_method = "pixel_sample_ST_B10_collection2"
@@ -194,14 +201,13 @@ def analyze(lat: float, lng: float):
                 "value": temp_celsius,
                 "unit": "celsius" if temp_celsius is not None else None,
                 "source": "Landsat-9 Collection 2 L2",
-                "asset": "ST_B10 surface temperature",
+                "asset": "ST_B10",
                 "acquired": acquired,
                 "resolution_m": 30,
                 "method": temp_method,
                 "platform": item.properties.get("platform"),
-                "quality": {
-                    "cloud_cover_scene_pct": item.properties.get("eo:cloud_cover")
-                },
+                "raw_dn": raw_val,
+                "quality": {"cloud_cover_scene_pct": cloud_cover},
                 "status": "found"
             }
         else:
@@ -209,9 +215,14 @@ def analyze(lat: float, lng: float):
     except Exception as e:
         measurements["thermal"] = {"status": "error", "detail": str(e)}
 
-    # ── Data quality assessment — coverage vs measurement quality ──
-    pixel_methods = {"point_query", "pixel_sample_B08_B04", "pixel_sample_ST_B10_collection2", "cog_pixel_sample"}
-    
+    # ── Quality assessment — coverage vs pixel measurement ──
+    pixel_methods = {
+        "point_query",
+        "pixel_sample_B08_B04",
+        "pixel_sample_ST_B10_collection2",
+        "cog_pixel_sample"
+    }
+
     available = 0
     pixel_measured = 0
     measurement_quality_detail = {}
@@ -223,42 +234,43 @@ def analyze(lat: float, lng: float):
         if m.get("status") == "found":
             available += 1
             method = m.get("method", "")
+            res = m.get("resolution_m", "?")
             if method in pixel_methods:
                 pixel_measured += 1
-                measurement_quality_detail[key] = f"pixel ({m.get('resolution_m', '?')}m)"
+                measurement_quality_detail[key] = f"pixel ({res}m)"
             else:
-                measurement_quality_detail[key] = f"scene/approx ({m.get('resolution_m', '?')}m)"
+                measurement_quality_detail[key] = f"scene/approx ({res}m)"
 
     coverage_quality = round(available / 4, 2)
     measurement_quality = round(pixel_measured / 4, 2)
     coverage = "high" if coverage_quality >= 0.75 else "medium" if coverage_quality >= 0.5 else "low"
-    data_quality = coverage_quality  # keep for compat
 
-    # Build source trace
+    # Source trace
     source_trace = []
     if measurements.get("ndvi", {}).get("status") == "found":
-        source_trace.append(f"Sentinel-2 L2A ({measurements['ndvi']['method']})")
+        m = measurements["ndvi"]
+        source_trace.append(f"Sentinel-2 L2A — NDVI {m.get('value')} ({m.get('method')})")
     if measurements.get("sar", {}).get("status") == "found":
-        source_trace.append(f"Sentinel-1 GRD ({measurements['sar'].get('orbit', '')} orbit)")
+        m = measurements["sar"]
+        source_trace.append(f"Sentinel-1 GRD — {m.get('orbit')} orbit · {m.get('acquired','')[:10]}")
     if measurements.get("elevation", {}).get("status") == "found":
-        source_trace.append(f"{measurements['elevation']['source']} ({measurements['elevation']['resolution_m']}m res)")
+        m = measurements["elevation"]
+        source_trace.append(f"{m.get('source')} — {m.get('value')}m ({m.get('resolution_m')}m res)")
     if measurements.get("thermal", {}).get("status") == "found":
-        method = measurements["thermal"]["method"]
-        val = measurements["thermal"]["value"]
-        if val is not None:
-            source_trace.append(f"Landsat-9 ST_B10 → {val}°C")
-        else:
-            source_trace.append("Landsat-9 ST_B10 (scene confirmed)")
+        m = measurements["thermal"]
+        val = f"{m.get('value')}°C" if m.get("value") is not None else "scene confirmed"
+        source_trace.append(f"Landsat-9 ST_B10 — {val} ({m.get('method')})")
+
+    pending = [k for k in ["ndvi", "sar", "thermal"] if measurement_quality_detail.get(k, "").startswith("scene")]
 
     return {
         "location": {"lat": lat, "lng": lng},
         "measurements": measurements,
-        "data_quality": data_quality,
-        "coverage": coverage,
-        "source_trace": source_trace,
         "coverage_quality": coverage_quality,
         "measurement_quality": measurement_quality,
         "measurement_quality_detail": measurement_quality_detail,
+        "coverage": coverage,
+        "source_trace": source_trace,
         "anomaly_score": None,
-        "note": "Coverage confirmed. Pixel-level measurement pending for: " + ", ".join([k for k in ["ndvi","sar","thermal"] if measurement_quality_detail.get(k,"").startswith("scene")])
+        "note": f"Pixel-level measurement pending for: {', '.join(pending)}" if pending else "All measurements pixel-confirmed"
     }
