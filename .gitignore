@@ -57,3 +57,5 @@ SAR/
 *.rtf
 *.rtfd
 maps.rtfd/
+__pycache__/
+*.pyc
