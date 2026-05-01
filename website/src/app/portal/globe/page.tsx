@@ -379,7 +379,7 @@ export default function PortalGlobe() {
                   <>
                     <div className="flex items-center justify-between">
                       <span className="text-[#3a4a3e] text-[9px] tracking-[0.2em]">SCORE</span>
-                      <span className="text-[#c8c4ba] text-xs font-light">{intel.score}/8 · {Math.round(intel.confidence * 100)}% confidence</span>
+                      <span className="text-[#c8c4ba] text-xs font-light">{intel.score}/8 · {intel.confidence != null ? Math.round(intel.confidence * 100) + "% confidence" : "scanning"}</span>
                     </div>
                     {intel.layers?.sentinel2?.status === 'found' && (
                       <div className="flex items-center justify-between">
