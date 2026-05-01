@@ -1,5 +1,0 @@
-[phases.setup]
-nixPkgs = ["libexpat", "libxml2", "gdal", "proj", "geos", "sqlite"]
-
-[phases.build]
-cmds = ["pip install -r requirements.txt"]
