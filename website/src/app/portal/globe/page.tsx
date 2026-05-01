@@ -76,21 +76,10 @@ function GlobeScene({ posts, stratumSites, onGlobeClick, onMouseMove, onStratumS
 
   useEffect(() => {
     const loader = new THREE.TextureLoader();
-    const urls = [
-      '/earth.jpg',
-      '/earth.jpg',
-    ];
-    let done = false;
-    const tryLoad = (i: number) => {
-      if (done || i >= urls.length) return;
-      loader.load(urls[i], (t) => {
-        if (done) return;
-        done = true;
-        t.colorSpace = THREE.SRGBColorSpace;
-        setTexture(t);
-      }, undefined, () => tryLoad(i + 1));
-    };
-    tryLoad(0);
+    loader.load('/earth.jpg', (t) => {
+      t.colorSpace = THREE.SRGBColorSpace;
+      setTexture(t);
+    });
   }, []);
 
   useFrame(() => { if (globeRef.current) globeRef.current.rotation.y += 0.00003; });
@@ -191,9 +180,7 @@ export default function PortalGlobe() {
   const supabase = createClient();
 
   useEffect(() => {
-    supabase.from('posts').select('id, lat, lng, title, category, image_url')
-      .not('lat', 'is', null).limit(200)
-      .then(({ data }) => { if (data) setPosts(data); });
+    supabase.from('posts').select('id, lat, lng, title, category, image_url').not('lat', 'is', null).limit(200).then(({ data }) => { if (data) setPosts(data); });
     supabase.from('stratum_sites').select(`id, name, latitude, longitude, source, site_type, ceto_score, ceto_tier, esa_phase, status, tags, stratum_sensor_readings(sensor_type, value, unit, created_at), stratum_observations(observation_type, notes, created_at), stratum_documents(doc_type, title, url)`).eq('status', 'active').then(({ data }) => { if (data) setStratumSites(data as StratumSite[]); });
     supabase.from('portal_projects').select('id, name, client').order('created_at', { ascending: false }).then(({ data }) => { if (data) setProjects(data); });
   }, []);
@@ -224,15 +211,13 @@ export default function PortalGlobe() {
       const data = await res.json();
       setIntel(data);
     } catch {
-      // engine offline — readout still shows
+      // engine offline
     } finally {
       setIntelLoading(false);
     }
   }, [buildReadout]);
 
-  const handleMouseMove = useCallback((lat: number, lng: number) => {
-    setCursorCoords({ lat, lng });
-  }, []);
+  const handleMouseMove = useCallback((lat: number, lng: number) => { setCursorCoords({ lat, lng }); }, []);
 
   const copyCoords = () => {
     if (!readout) return;
@@ -253,7 +238,7 @@ export default function PortalGlobe() {
     });
     setFlagging(false);
     if (!error) { setFlagDone(true); showToast('Anomaly flagged and saved'); }
-    else { showToast('Error saving — check console'); console.error(error); }
+    else { showToast('Error saving'); console.error(error); }
   };
 
   const addToProject = async (projectId: string) => {
@@ -264,7 +249,7 @@ export default function PortalGlobe() {
     const { error } = await supabase.from('portal_observations').insert({
       user_id: user.id, project_id: projectId, source: 'manual', type: 'field_note',
       lat: readout.lat, lng: readout.lng, flagged: false,
-      properties: { elevation: readout.elevation, ndvi: readout.ndvi, magnetic: readout.magnetic, active_layers: layers.filter(l => l.active).map(l => l.id) },
+      properties: { elevation: readout.elevation, ndvi: readout.ndvi, active_layers: layers.filter(l => l.active).map(l => l.id) },
     });
     setSavingProject(null);
     setShowProjectPicker(false);
@@ -329,7 +314,7 @@ export default function PortalGlobe() {
         </button>
 
         <Canvas camera={{ position: [0, 0, 5.5], fov: 42 }} style={{ background: '#020508' }} gl={{ antialias: true }}>
-          <GlobeScene posts={posts} stratumSites={stratumSites} onGlobeClick={handleGlobeClick} onMouseMove={handleMouseMove} onStratumSiteClick={(site) => { setSelectedStratumSite(site); setReadout(null); }} />
+          <GlobeScene posts={posts} stratumSites={stratumSites} onGlobeClick={handleGlobeClick} onMouseMove={handleMouseMove} onStratumSiteClick={(site) => { setSelectedStratumSite(site); setReadout(null); setIntel(null); }} />
         </Canvas>
 
         {cursorCoords && (
@@ -351,6 +336,7 @@ export default function PortalGlobe() {
                 </button>
               </div>
             </div>
+
             <div className="p-4 space-y-2.5">
               <ReadoutRow label="LAT" value={`${readout.lat}°`} />
               <ReadoutRow label="LNG" value={`${readout.lng}°`} />
@@ -375,11 +361,16 @@ export default function PortalGlobe() {
                   <span className="text-[#5b7c6f] text-[9px] tracking-[0.2em] font-light">LITHIC ENGINE</span>
                   {intelLoading && <span className="text-[#3a4a3e] text-[9px] font-light animate-pulse">scanning...</span>}
                 </div>
-                {intel && (
+                {intel && !intel.error && (
                   <>
+                    {intel.summary && (
+                      <p className="text-[#e8e4da] text-[10px] font-light leading-snug border-l-2 border-[#5b7c6f] pl-2 mb-2">{intel.summary}</p>
+                    )}
                     <div className="flex items-center justify-between">
                       <span className="text-[#3a4a3e] text-[9px] tracking-[0.2em]">SCORE</span>
-                      <span className="text-[#c8c4ba] text-xs font-light">{intel.score}/8 · {intel.confidence != null ? Math.round(intel.confidence * 100) + "% confidence" : "scanning"}</span>
+                      <span className="text-[#c8c4ba] text-xs font-light">
+                        {intel.score}/8 · {intel.confidence != null ? Math.round(intel.confidence * 100) + '%' : 'pending'} confidence
+                      </span>
                     </div>
                     {intel.layers?.sentinel2?.status === 'found' && (
                       <div className="flex items-center justify-between">
@@ -387,67 +378,24 @@ export default function PortalGlobe() {
                         <span className="text-[#5b7c6f] text-[9px] font-light">{intel.layers.sentinel2.cloud_cover?.toFixed(1)}% cloud · {intel.layers.sentinel2.date?.slice(0,10)}</span>
                       </div>
                     )}
+                    {intel.layers?.sentinel2?.ndvi_approx != null && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-[#3a4a3e] text-[9px] tracking-[0.2em]">NDVI</span>
+                        <span className="text-[9px] font-light" style={{color: intel.layers.sentinel2.ndvi_approx > 0.5 ? '#4ade80' : intel.layers.sentinel2.ndvi_approx > 0.2 ? '#fbbf24' : '#f87171'}}>
+                          {intel.layers.sentinel2.ndvi_approx}
+                        </span>
+                      </div>
+                    )}
+                    {intel.layers?.elevation?.status === 'found' && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-[#3a4a3e] text-[9px] tracking-[0.2em]">ELEVATION</span>
+                        <span className="text-[#5b7c6f] text-[9px] font-light">{intel.layers.elevation.value}m · {intel.layers.elevation.source}</span>
+                      </div>
+                    )}
                     {intel.layers?.sentinel1_sar?.status === 'found' && (
                       <div className="flex items-center justify-between">
                         <span className="text-[#3a4a3e] text-[9px] tracking-[0.2em]">SAR</span>
                         <span className="text-[#5b7c6f] text-[9px] font-light">{intel.layers.sentinel1_sar.orbit} · {intel.layers.sentinel1_sar.date?.slice(0,10)}</span>
-                      </div>
-                    )}
-                    {intel.summary && (
-                      <p className="text-[#e8e4da] text-[10px] font-light leading-snug border-l-2 border-[#5b7c6f] pl-2 mb-2">{intel.summary}</p>
-                    )}
-                    {intel.layers?.elevation?.status === 'found' && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-[#3a4a3e] text-[9px] tracking-[0.2em]">ELEVATION</span>
-                        <span className="text-[#5b7c6f] text-[9px] font-light">{intel.layers.elevation.value}m · {intel.layers.elevation.source}</span>
-                      </div>
-                    )}
-                    {intel.layers?.sentinel2?.ndvi_approx != null && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-[#3a4a3e] text-[9px] tracking-[0.2em]">NDVI</span>
-                        <span className="text-[9px] font-light" style={{color: intel.layers.sentinel2.ndvi_approx > 0.5 ? '#4ade80' : intel.layers.sentinel2.ndvi_approx > 0.2 ? '#fbbf24' : '#f87171'}}>{intel.layers.sentinel2.ndvi_approx}</span>
-                      </div>
-                    )}
-                    {intel.layers?.landsat_thermal?.status === 'found' && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-[#3a4a3e] text-[9px] tracking-[0.2em]">THERMAL</span>
-                        <span className="text-[#5b7c6f] text-[9px] font-light">Landsat-9 · {intel.layers.landsat_thermal.date?.slice(0,10)}</span>
-                      </div>
-                    )}
-                    {intel.insights?.map((ins: string, i: number) => ({intel.summary && (
-                      <p className="text-[#e8e4da] text-[10px] font-light leading-snug border-l-2 border-[#5b7c6f] pl-2 mb-2">{intel.summary}</p>
-                    )}
-                    {intel.layers?.elevation?.status === 'found' && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-[#3a4a3e] text-[9px] tracking-[0.2em]">ELEVATION</span>
-                        <span className="text-[#5b7c6f] text-[9px] font-light">{intel.layers.elevation.value}m · {intel.layers.elevation.source}</span>
-                      </div>
-                    )}
-                    {intel.layers?.sentinel2?.ndvi_approx != null && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-[#3a4a3e] text-[9px] tracking-[0.2em]">NDVI</span>
-                        <span className="text-[9px] font-light" style={{color: intel.layers.sentinel2.ndvi_approx > 0.5 ? '#4ade80' : intel.layers.sentinel2.ndvi_approx > 0.2 ? '#fbbf24' : '#f87171'}}>{intel.layers.sentinel2.ndvi_approx}</span>
-                      </div>
-                    )}
-                    {intel.layers?.landsat_thermal?.status === 'found' && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-[#3a4a3e] text-[9px] tracking-[0.2em]">THERMAL</span>
-                        <span className="text-[#5b7c6f] text-[9px] font-light">Landsat-9 · {intel.layers.landsat_thermal.date?.slice(0,10)}</span>
-                      </div>
-                    )}
-                    {intel.insights?.map((ins: string, i: number) => ( (<p className="text-[#e8e4da] text-[10px] font-light leading-snug border-l-2 border-[#5b7c6f] pl-2 mb-2">{intel.summary}</p>)}{intel.layers?.elevation?.status === 'found' && (<div className="flex items-center justify-between"><span className="text-[#3a4a3e] text-[9px] tracking-[0.2em]">ELEVATION</span><span className="text-[#5b7c6f] text-[9px] font-light">{intel.layers.elevation.value}m · {intel.layers.elevation.source}</span></div>)}{intel.layers?.sentinel2?.ndvi_approx != null && (<div className="flex items-center justify-between"><span className="text-[#3a4a3e] text-[9px] tracking-[0.2em]">NDVI</span><span className="text-[9px] font-light" style={{color: intel.layers.sentinel2.ndvi_approx > 0.5 ? '#4ade80' : intel.layers.sentinel2.ndvi_approx > 0.2 ? '#fbbf24' : '#f87171'}}>{intel.layers.sentinel2.ndvi_approx}</span></div>)}{intel.summary && (
-                      <p className="text-[#e8e4da] text-[10px] font-light leading-snug border-l-2 border-[#5b7c6f] pl-2 mb-2">{intel.summary}</p>
-                    )}
-                    {intel.layers?.elevation?.status === 'found' && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-[#3a4a3e] text-[9px] tracking-[0.2em]">ELEVATION</span>
-                        <span className="text-[#5b7c6f] text-[9px] font-light">{intel.layers.elevation.value}m · {intel.layers.elevation.source}</span>
-                      </div>
-                    )}
-                    {intel.layers?.sentinel2?.ndvi_approx != null && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-[#3a4a3e] text-[9px] tracking-[0.2em]">NDVI</span>
-                        <span className="text-[9px] font-light" style={{color: intel.layers.sentinel2.ndvi_approx > 0.5 ? '#4ade80' : intel.layers.sentinel2.ndvi_approx > 0.2 ? '#fbbf24' : '#f87171'}}>{intel.layers.sentinel2.ndvi_approx}</span>
                       </div>
                     )}
                     {intel.layers?.landsat_thermal?.status === 'found' && (
