@@ -393,7 +393,7 @@ export default function PortalGlobe() {
                         <span className="text-[#5b7c6f] text-[9px] font-light">{intel.layers.sentinel1_sar.orbit} · {intel.layers.sentinel1_sar.date?.slice(0,10)}</span>
                       </div>
                     )}
-                    {intel.summary {intel.summary && (
+                    {intel.summary && (
                       <p className="text-[#e8e4da] text-[10px] font-light leading-snug border-l-2 border-[#5b7c6f] pl-2 mb-2">{intel.summary}</p>
                     )}
                     {intel.layers?.elevation?.status === 'found' && (
