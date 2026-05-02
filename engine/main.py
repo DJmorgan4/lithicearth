@@ -307,43 +307,48 @@ def hydro(lat: float, lng: float, radius_km: float = 5.0):
     deg = radius_km / 111.0
     bbox = f"{lng - deg},{lat - deg},{lng + deg},{lat + deg}"
 
-    # ── NHD streams via USGS WFS ──
+    # ── NWIS surface water stations — named streams within bbox ──
     try:
+        stream_deg = 0.15  # ~16km for stream search
         r = httpx.get(
-            "https://hydro.nationalmap.gov/arcgis/rest/services/nhd/MapServer/6/query",
+            "https://waterservices.usgs.gov/nwis/site/",
             params={
-                "geometry": f"{lng - deg},{lat - deg},{lng + deg},{lat + deg}",
-                "geometryType": "esriGeometryEnvelope",
-                "spatialRel": "esriSpatialRelIntersects",
-                "outFields": "GNIS_NAME,LENGTHKM,FTYPE,REACHCODE",
-                "returnGeometry": "true",
-                "f": "json",
-                "resultRecordCount": 20,
+                "format": "rdb",
+                "bBox": f"{round(lng - stream_deg, 7)},{round(lat - stream_deg, 7)},{round(lng + stream_deg, 7)},{round(lat + stream_deg, 7)}",
+                "siteType": "ST",
+                "siteStatus": "all",
             },
             timeout=10
         )
-        data = r.json()
-        for feat in data.get("features", []):
-            props = feat.get("attributes", {})
-            name = props.get("GNIS_NAME") or "Unnamed"
-            ftype = props.get("FTYPE", "")
-            length = props.get("LENGTHKM", 0)
-            # Approximate distance from center
-            geom = feat.get("geometry", {})
-            paths = geom.get("paths", [[]])
-            if paths:
-                px, py = paths[0][0][0], paths[0][0][1]
-                dist = math.sqrt((px - lng) ** 2 + (py - lat) ** 2) * 111.0
-            else:
-                dist = None
-            results["streams"].append({
-                "name": name,
-                "type": ftype,
-                "length_km": round(length, 3) if length else None,
-                "distance_km": round(dist, 3) if dist else None,
-            })
+        lines = [l for l in r.text.split("\n") if l and not l.startswith("#") and not l.startswith("5s")]
+        if len(lines) > 1:
+            headers = lines[0].split("\t")
+            for row in lines[2:20]:
+                cols = row.split("\t")
+                if len(cols) >= len(headers):
+                    d = dict(zip(headers, cols))
+                    name = d.get("station_nm", "").strip()
+                    if not name:
+                        continue
+                    try:
+                        slat = float(d.get("dec_lat_va", 0))
+                        slng = float(d.get("dec_long_va", 0))
+                        dist = math.sqrt((slng - lng)**2 + (slat - lat)**2) * 111.0
+                    except:
+                        dist = None
+                    results["streams"].append({
+                        "name": name,
+                        "type": "Surface water station",
+                        "site_no": d.get("site_no", ""),
+                        "huc": d.get("huc_cd", ""),
+                        "distance_km": round(dist, 3) if dist else None,
+                        "source": "USGS NWIS",
+                    })
+        results["streams_source"] = "USGS NWIS surface water stations"
     except Exception as e:
         results["streams_error"] = str(e)
+
+    # ── NWIS groundwater wells ──
 
     # ── NWIS groundwater wells ──
     try:
