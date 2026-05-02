@@ -128,7 +128,7 @@ def analyze(lat: float, lng: float):
     except Exception as e:
         measurements["ndvi"] = {"status": "error", "detail": str(e)}
 
-    # ── Sentinel-1 SAR ──
+    # ── Sentinel-1 SAR — pixel sample VV COG ──
     try:
         search = catalog.search(
             collections=["sentinel-1-grd"],
@@ -138,16 +138,38 @@ def analyze(lat: float, lng: float):
         items = list(search.items())
         if items:
             item = items[0]
+            platform = item.properties.get("platform")
+            orbit = item.properties.get("sat:orbit_state")
+            acquired = item.datetime.isoformat() if item.datetime else None
+
+            # Try to sample VV pixel from COG
+            vv_val = None
+            vv_method = "scene_coverage_confirmed"
+            assets = item.assets
+            vv_asset = assets.get("vv") or assets.get("VV") or assets.get("vv-grd") or assets.get("VV-grd")
+            if vv_asset:
+                vv_href = vv_asset.href if hasattr(vv_asset, "href") else vv_asset.get("href")
+                if vv_href:
+                    raw = sample_cog_point(vv_href, lng, lat)
+                    if raw is not None and raw != 0:
+                        import math
+                        # Convert DN to dB: 10 * log10(DN^2) - calibration offset
+                        try:
+                            vv_val = round(10 * math.log10(float(raw) ** 2 + 1e-10) - 83.0, 3)
+                            vv_method = "pixel_sample_VV_dB"
+                        except Exception:
+                            vv_val = None
+
             measurements["sar"] = {
-                "value": None,
+                "value": vv_val,
                 "unit": "dB",
                 "source": "Sentinel-1 GRD",
                 "asset": "VV polarization",
-                "acquired": item.datetime.isoformat() if item.datetime else None,
+                "acquired": acquired,
                 "resolution_m": 10,
-                "method": "scene_coverage_confirmed",
-                "platform": item.properties.get("platform"),
-                "orbit": item.properties.get("sat:orbit_state"),
+                "method": vv_method,
+                "platform": platform,
+                "orbit": orbit,
                 "status": "found"
             }
         else:
