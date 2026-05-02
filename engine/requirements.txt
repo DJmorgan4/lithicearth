@@ -9,3 +9,5 @@ xarray
 httpx
 rasterio
 rio-tiler
+scikit-learn
+numpy
