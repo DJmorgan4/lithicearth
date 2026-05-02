@@ -833,3 +833,74 @@ def anomaly(lat: float, lng: float):
     results["rec_note"] = "Phase II investigation recommended" if rec else "No anomalies requiring Phase II at this time"
     results["location"] = {"lat": lat, "lng": lng}
     return results
+
+
+# ── /scan endpoint — multi-sensor evidence pipeline ──────────────────────────
+import math as _math
+
+def classify_surface_context(lat: float, lng: float) -> dict:
+    """Classify surface type at coordinate to drive adaptive data fetching."""
+    # Antarctica
+    if lat < -60:
+        return {"type": "ice", "dem_source": "REMA", "ndvi_valid": False, "sar_valid": True}
+    # Arctic
+    if lat > 70:
+        return {"type": "arctic", "dem_source": "ArcticDEM", "ndvi_valid": False, "sar_valid": True}
+    # Ocean (rough bounding box — will be refined with land mask)
+    # For now: flag as unknown, rely on elevation to confirm
+    # US conus
+    if -125 <= lng <= -66 and 24 <= lat <= 50:
+        return {"type": "land", "dem_source": "USGS_3DEP", "ndvi_valid": True, "sar_valid": True}
+    # Default land
+    return {"type": "land", "dem_source": "Copernicus_GLO30", "ndvi_valid": True, "sar_valid": True}
+
+
+@app.get("/scan")
+async def scan_aoi(lat: float, lng: float, radius_m: float = 500.0):
+    """
+    Multi-sensor evidence pipeline for a point AOI.
+    Phase 1: surface classification + data inventory.
+    """
+    context = classify_surface_context(lat, lng)
+
+    # Normalize coords
+    lat = max(-90, min(90, lat))
+    lng = ((lng + 180) % 360 + 360) % 360 - 180
+
+    result = {
+        "location": {"lat": lat, "lng": lng},
+        "radius_m": radius_m,
+        "context": context,
+        "layers": {},
+        "candidates": [],
+        "evidence_score": None,
+        "quality": {},
+        "note": "Phase 1 — surface classification complete. Data fetch pending."
+    }
+
+    # Elevation — reuse existing logic
+    try:
+        if -125 <= lng <= -66 and 24 <= lat <= 50:
+            url = f"https://epqs.nationalmap.gov/v1/json?x={lng}&y={lat}&wkid=4326&includeDate=false"
+            async with httpx.AsyncClient(timeout=8) as client:
+                r = await client.get(url)
+                val = r.json().get("value")
+                if val and str(val) not in ["-1000000", "None"]:
+                    result["layers"]["elevation"] = {
+                        "value": round(float(val), 2),
+                        "unit": "m",
+                        "source": context["dem_source"],
+                        "status": "found"
+                    }
+    except Exception as e:
+        result["layers"]["elevation"] = {"status": "error", "detail": str(e)}
+
+    # Surface context flags
+    if not context["ndvi_valid"]:
+        result["layers"]["ndvi"] = {"status": "suppressed", "reason": f"NDVI not meaningful over {context['type']} surface"}
+
+    result["quality"]["surface_classification"] = "confirmed"
+    result["quality"]["dem_source"] = context["dem_source"]
+    result["quality"]["ndvi_suppressed"] = not context["ndvi_valid"]
+
+    return result
