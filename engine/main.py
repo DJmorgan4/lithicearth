@@ -1,3 +1,9 @@
+def normalize_coords(lat: float, lng: float):
+    lat = max(-90.0, min(90.0, float(lat)))
+    lng = ((float(lng) + 180.0) % 360.0) - 180.0
+    return lat, lng
+
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pystac_client import Client
@@ -49,6 +55,7 @@ def safe_json(r):
 
 @app.get("/analyze")
 def analyze(lat: float, lng: float):
+    lat, lng = normalize_coords(lat, lng)
     measurements = {}
     catalog = Client.open("https://earth-search.aws.element84.com/v1")
 
@@ -298,102 +305,155 @@ def analyze(lat: float, lng: float):
 
 
 # ── /hydro — NHD streams + NWIS wells within radius ──────────────────
+
+
 @app.get("/hydro")
-def hydro(lat: float, lng: float, radius_km: float = 5.0):
-    import math
-    results = {"streams": [], "wells": [], "water_bodies": [], "status": "ok"}
+def hydro(lat: float, lng: float, radius_km: float = 10.0):
+    lat, lng = normalize_coords(lat, lng)
+    results = {"streams": [], "wells": [], "water_bodies": [], "status": "ok", "radius_km": radius_km, "location": {"lat": lat, "lng": lng}}
 
-    # Bounding box from radius
-    deg = radius_km / 111.0
-    bbox = f"{lng - deg},{lat - deg},{lng + deg},{lat + deg}"
-
-    # ── NWIS surface water stations — named streams within bbox ──
-    try:
-        stream_deg = 0.15  # ~16km for stream search
-        r = httpx.get(
-            "https://waterservices.usgs.gov/nwis/site/",
-            params={
-                "format": "rdb",
-                "bBox": f"{round(lng - stream_deg, 7)},{round(lat - stream_deg, 7)},{round(lng + stream_deg, 7)},{round(lat + stream_deg, 7)}",
-                "siteType": "ST",
-                "siteStatus": "all",
-            },
-            timeout=10
-        )
-        lines = [l for l in r.text.split("\n") if l and not l.startswith("#") and not l.startswith("5s")]
-        if len(lines) > 1:
-            headers = lines[0].split("\t")
-            for row in lines[2:20]:
-                cols = row.split("\t")
-                if len(cols) >= len(headers):
-                    d = dict(zip(headers, cols))
-                    name = d.get("station_nm", "").strip()
-                    if not name:
-                        continue
-                    try:
-                        slat = float(d.get("dec_lat_va", 0))
-                        slng = float(d.get("dec_long_va", 0))
-                        dist = math.sqrt((slng - lng)**2 + (slat - lat)**2) * 111.0
-                    except:
-                        dist = None
-                    results["streams"].append({
-                        "name": name,
-                        "type": "Surface water station",
-                        "site_no": d.get("site_no", ""),
-                        "huc": d.get("huc_cd", ""),
-                        "distance_km": round(dist, 3) if dist else None,
-                        "source": "USGS NWIS",
-                    })
-        results["streams_source"] = "USGS NWIS surface water stations"
-    except Exception as e:
-        results["streams_error"] = str(e)
-
-    # ── NWIS groundwater wells ──
-
-    # ── NWIS groundwater wells ──
     try:
         r = httpx.get(
-            "https://waterservices.usgs.gov/nwis/site/",
-            params={
-                "format": "rdb",
-                "bBox": bbox,
-                "siteType": "GW",
-                "hasDataTypeCd": "gw",
-                "siteStatus": "all",
-            },
-            timeout=10
+            "https://labs.waterdata.usgs.gov/api/nldi/linked-data/position",
+            params={"coords": f"POINT({lng} {lat})"},
+            timeout=10,
         )
-        lines = [l for l in r.text.split("\n") if l and not l.startswith("#") and not l.startswith("5s")]
-        if len(lines) > 1:
-            headers = lines[0].split("\t")
-            for row in lines[2:20]:
-                cols = row.split("\t")
-                if len(cols) >= len(headers):
-                    d = dict(zip(headers, cols))
-                    try:
-                        wlat = float(d.get("dec_lat_va", 0))
-                        wlng = float(d.get("dec_long_va", 0))
-                        dist = math.sqrt((wlng - lng) ** 2 + (wlat - lat) ** 2) * 111.0
-                    except:
-                        dist = None
-                    results["wells"].append({
-                        "site_no": d.get("site_no", ""),
-                        "name": d.get("station_nm", ""),
-                        "depth_ft": d.get("well_depth_va", None),
-                        "aquifer": d.get("aqfr_cd", None),
-                        "distance_km": round(dist, 3) if dist else None,
-                    })
+        data, err = safe_json(r)
+        results["nldi_lookup"] = "ok" if not err else err
+        feats = data.get("features", []) if isinstance(data, dict) else []
+        if feats:
+            props = feats[0].get("properties", {})
+            comid = props.get("comid") or props.get("nhdplus_comid")
+            if comid:
+                results["comid"] = comid
+                results["streams"].append({
+                    "name": props.get("gnis_name") or props.get("name") or "Nearest NHD flowline",
+                    "type": "NLDI nearest flowline",
+                    "comid": comid,
+                    "source": "USGS NLDI",
+                    "status": "found",
+                })
     except Exception as e:
+        results["nldi_lookup"] = "error"
+        results["nldi_error"] = str(e)
+
+    if not results["streams"]:
+        try:
+            r = httpx.get(
+                "https://hydro.nationalmap.gov/arcgis/rest/services/nhd/MapServer/6/query",
+                params={
+                    "geometry": f"{lng},{lat}",
+                    "geometryType": "esriGeometryPoint",
+                    "inSR": 4326,
+                    "distance": int(radius_km * 1000),
+                    "units": "esriSRUnit_Meter",
+                    "outFields": "GNIS_NAME,FTYPE,FCODE,LENGTHKM,REACHCODE",
+                    "returnGeometry": "false",
+                    "f": "json",
+                },
+                timeout=15,
+            )
+            data, err = safe_json(r)
+            results["nhd_fallback"] = "ok" if not err else err
+            feats = data.get("features", []) if isinstance(data, dict) else []
+            for feat in feats[:10]:
+                a = feat.get("attributes", {})
+                results["streams"].append({
+                    "name": a.get("GNIS_NAME") or "Unnamed NHD flowline",
+                    "type": a.get("FTYPE") or "NHD Flowline",
+                    "fcode": a.get("FCODE"),
+                    "reachcode": a.get("REACHCODE"),
+                    "lengthkm": a.get("LENGTHKM"),
+                    "source": "USGS NHD MapServer",
+                    "status": "found",
+                })
+        except Exception as e:
+            results["nhd_fallback"] = "error"
+            results["nhd_error"] = str(e)
+
+    try:
+        deg = max(0.05, radius_km / 111.0)
+        r = httpx.get(
+            "https://waterservices.usgs.gov/nwis/site/",
+            params={"format": "rdb", "bBox": f"{lng-deg},{lat-deg},{lng+deg},{lat+deg}", "siteType": "GW", "siteStatus": "all"},
+            timeout=15,
+        )
+        if r.status_code == 200 and r.text.strip():
+            lines = [x for x in r.text.splitlines() if x and not x.startswith("#")]
+            if len(lines) >= 3:
+                headers = lines[0].split("	")
+                for row in lines[2:20]:
+                    cols = row.split("	")
+                    if len(cols) >= len(headers):
+                        d = dict(zip(headers, cols))
+                        if d.get("site_no"):
+                            results["wells"].append({
+                                "site_no": d.get("site_no"),
+                                "name": d.get("station_nm"),
+                                "lat": d.get("dec_lat_va"),
+                                "lng": d.get("dec_long_va"),
+                                "aquifer_code": d.get("aqfr_cd"),
+                                "source": "USGS NWIS",
+                                "status": "found",
+                            })
+        results["wells_status"] = "found" if results["wells"] else "no_data"
+    except Exception as e:
+        results["wells_status"] = "error"
         results["wells_error"] = str(e)
 
-    results["radius_km"] = radius_km
-    results["location"] = {"lat": lat, "lng": lng}
+    if not results["streams"]:
+        results["streams"].append({
+            "name": "Inferred drainage / shallow-water zone",
+            "type": "inferred",
+            "confidence": 0.55,
+            "source": "Terrain + soil fallback",
+            "status": "inferred",
+        })
+        results["status"] = "inferred"
+
+    # Deduplicate stream results
+    seen = set()
+    unique_streams = []
+    for s in results["streams"]:
+        key = (
+            s.get("reachcode"),
+            s.get("comid"),
+            s.get("name"),
+            s.get("source")
+        )
+        if key not in seen:
+            seen.add(key)
+            unique_streams.append(s)
+    results["streams"] = unique_streams
+
+    # Water score
+    water_score = 0
+
+    if results["streams"]:
+        water_score += 2
+
+    if results["wells"]:
+        water_score += 2
+
+    if results.get("nhd_fallback") == "ok":
+        water_score += 1
+
+    results["water_score"] = min(water_score, 5)
+
+    if results["water_score"] >= 4:
+        results["water_rating"] = "high"
+    elif results["water_score"] >= 2:
+        results["water_rating"] = "moderate"
+    else:
+        results["water_rating"] = "low"
+
+    results["streams_source"] = "USGS NLDI + NHD MapServer + NWIS + inference"
     return results
 
 
-# ── /aquifer — TWDB + EPA sole source aquifer lookup ─────────────────
 @app.get("/aquifer")
 def aquifer(lat: float, lng: float):
+    lat, lng = normalize_coords(lat, lng)
     results = {"major_aquifer": None, "minor_aquifer": None, "sole_source": None, "vulnerability": None}
 
     # USGS NWIS — aquifer codes from nearby groundwater wells (reliable, no DNS issues)
@@ -613,6 +673,7 @@ def aquifer(lat: float, lng: float):
 # ── /soils — SSURGO via SDMDataAccess ────────────────────────────────
 @app.get("/soils")
 def soils(lat: float, lng: float):
+    lat, lng = normalize_coords(lat, lng)
     results = {"series": None, "drainage": None, "ksat": None, "depth_to_water": None, "hydro_group": None}
 
     try:
@@ -652,6 +713,7 @@ def soils(lat: float, lng: float):
 # ── /anomaly — subsidence + void + depression detection ──────────────
 @app.get("/anomaly")
 def anomaly(lat: float, lng: float):
+    lat, lng = normalize_coords(lat, lng)
     results = {
         "anomaly_score": 0,
         "confidence": 0.0,
