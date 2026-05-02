@@ -80,8 +80,8 @@ const LAYER_DEFS: LayerDef[] = [
     label: 'Hydrology / NHD',
     group: 'Environmental',
     color: '#06b6d4',
-    wmsUrl: 'https://hydrowfs.nationalmap.gov/arcgis/services/wmsconnector/com.esri.wms.Esrimap/hydrography/MapServer/WMSServer',
-    wmsLayer: '0',
+    wmsUrl: 'https://hydro.nationalmap.gov/arcgis/services/NHDPlus_HR/MapServer/WMSServer',
+    wmsLayer: 'NHDFlowline',
     opacity: 0.8,
     active: false,
     source: 'USGS NHD',
@@ -97,6 +97,18 @@ const LAYER_DEFS: LayerDef[] = [
     opacity: 0.65,
     active: false,
     source: 'FEMA NFHL',
+    available: true,
+  },
+  {
+    id: 'nwi',
+    label: 'Wetlands (NWI)',
+    group: 'Environmental',
+    color: '#34d399',
+    wmsUrl: 'https://www.fws.gov/wetlandsmapper/rest/services/Wetlands/MapServer/WMSServer',
+    wmsLayer: '0',
+    opacity: 0.7,
+    active: false,
+    source: 'USFWS NWI',
     available: true,
   },
   {
@@ -129,8 +141,8 @@ const LAYER_DEFS: LayerDef[] = [
     color: '#4ade80',
     opacity: 0.7,
     active: false,
-    source: 'Sentinel-1 (engine)',
-    available: true,
+    source: 'Sentinel-1 — point readout only',
+    available: false,
   },
   {
     id: 'ndvi',
@@ -139,8 +151,8 @@ const LAYER_DEFS: LayerDef[] = [
     color: '#86efac',
     opacity: 0.75,
     active: false,
-    source: 'Sentinel-2 (engine)',
-    available: true,
+    source: 'Sentinel-2 — point readout only',
+    available: false,
   },
   {
     id: 'thermal',
@@ -149,12 +161,13 @@ const LAYER_DEFS: LayerDef[] = [
     color: '#f87171',
     opacity: 0.7,
     active: false,
-    source: 'Landsat-9 (engine)',
-    available: true,
+    source: 'Landsat-9 — point readout only',
+    available: false,
   },
 ]
 
 const GROUPS = ['Base', 'Environmental', 'Geophysical', 'Radar', 'Spectral', 'Thermal']
+// Note: Radar/Spectral/Thermal are point-readout only via Lithic Engine
 
 // ── ReadoutRow ─────────────────────────────────────────────────────────
 function ReadoutRow({ label, value, sub, accent }: {
@@ -360,8 +373,9 @@ function ViewerInner() {
                     <div key={layer.id} className="border-b border-[#0f160f]">
                       <div className="flex items-center gap-2 px-4 py-2.5">
                         <button
-                          onClick={() => toggleLayer(layer.id)}
-                          className="relative w-6 h-3 rounded-full flex-shrink-0 transition-colors"
+                          onClick={() => layer.available && toggleLayer(layer.id)}
+                          disabled={!layer.available}
+                          className="relative w-6 h-3 rounded-full flex-shrink-0 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                           style={{ background: layer.active ? layer.color + '40' : '#1a2a1e' }}
                         >
                           <span
@@ -373,7 +387,7 @@ function ViewerInner() {
                           />
                         </button>
                         <div className="flex-1 min-w-0">
-                          <p className={`text-[10px] truncate transition-colors ${layer.active ? 'text-[#c8c4ba]' : 'text-[#3a4a3e]'}`}>
+                          <p className={`text-[10px] truncate transition-colors ${!layer.available ? 'text-[#2a3a2e]' : layer.active ? 'text-[#c8c4ba]' : 'text-[#3a4a3e]'}`}>
                             {layer.label}
                           </p>
                           <p className="text-[#2a3a2e] text-[8px]">{layer.source}</p>
