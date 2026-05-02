@@ -1,5 +1,4 @@
 'use client'
-
 import { useEffect, useRef, useState, useCallback, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import {
@@ -7,6 +6,21 @@ import {
   Copy, Check, ArrowLeft, Crosshair, AlertCircle, Radio,
   Thermometer, Mountain, Eye, Atom, Droplets, Zap
 } from 'lucide-react'
+
+// ── Coordinate utilities ───────────────────────────────────────────────
+function clampLat(lat: number): number {
+  return Math.max(-90, Math.min(90, lat))
+}
+function wrapLng(lng: number): number {
+  // Normalize to [-180, 180] — handles Leaflet tile-wrap giving e.g. -439
+  return ((((lng + 180) % 360) + 360) % 360) - 180
+}
+function sanitizeCoords(lat: number, lng: number) {
+  return {
+    lat: parseFloat(clampLat(lat).toFixed(5)),
+    lng: parseFloat(wrapLng(lng).toFixed(5)),
+  }
+}
 
 // ── Types ──────────────────────────────────────────────────────────────
 interface LayerDef {
@@ -22,7 +36,6 @@ interface LayerDef {
   source: string
   available: boolean
 }
-
 interface IntelData {
   location: { lat: number; lng: number }
   measurements: {
@@ -38,7 +51,7 @@ interface IntelData {
   note: string
 }
 
-// ── Layer definitions (tile sources requiring no API key) ──────────────
+// ── Layer definitions ──────────────────────────────────────────────────
 const LAYER_DEFS: LayerDef[] = [
   {
     id: 'satellite',
@@ -167,23 +180,26 @@ function ViewerInner() {
   const layerRefs = useRef<Record<string, any>>({})
   const markerRef = useRef<any>(null)
 
-  const initLat = parseFloat(searchParams.get('lat') || '33.17429')
-  const initLng = parseFloat(searchParams.get('lng') || '-96.61903')
+  // Sanitize initial coords from URL params
+  const rawLat = parseFloat(searchParams.get('lat') || '33.17429')
+  const rawLng = parseFloat(searchParams.get('lng') || '-96.61903')
+  const initCoords = sanitizeCoords(rawLat, rawLng)
 
   const [layers, setLayers] = useState<LayerDef[]>(LAYER_DEFS)
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
   const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [coords, setCoords] = useState({ lat: initLat, lng: initLng })
+  const [coords, setCoords] = useState(initCoords)
   const [cursorCoords, setCursorCoords] = useState<{ lat: number; lng: number } | null>(null)
   const [intel, setIntel] = useState<IntelData | null>(null)
   const [intelLoading, setIntelLoading] = useState(false)
   const [intelError, setIntelError] = useState(false)
   const [copied, setCopied] = useState(false)
-  const [readoutOpen, setReadoutOpen] = useState(true)
   const [zoom, setZoom] = useState(14)
 
   // ── Fetch intel from engine ──────────────────────────────────────────
   const fetchIntel = useCallback(async (lat: number, lng: number) => {
+    // Guard — never send invalid coords to engine
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return
     setIntelLoading(true)
     setIntelError(false)
     setIntel(null)
@@ -203,18 +219,16 @@ function ViewerInner() {
   // ── Init Leaflet ─────────────────────────────────────────────────────
   useEffect(() => {
     if (!mapRef.current || leafletRef.current) return
-
     const initMap = async () => {
       const L = (await import('leaflet')).default
       await import('leaflet/dist/leaflet.css')
 
       const map = L.map(mapRef.current!, {
-        center: [initLat, initLng],
+        center: [initCoords.lat, initCoords.lng],
         zoom: 14,
         zoomControl: false,
         attributionControl: false,
       })
-
       leafletRef.current = map
 
       // Base satellite tile
@@ -224,7 +238,7 @@ function ViewerInner() {
       ).addTo(map)
       layerRefs.current['satellite'] = satLayer
 
-      // Crosshair marker at AOI
+      // Crosshair marker
       const icon = L.divIcon({
         className: '',
         html: `<div style="width:20px;height:20px;position:relative;">
@@ -235,31 +249,28 @@ function ViewerInner() {
         iconSize: [20, 20],
         iconAnchor: [10, 10],
       })
+      markerRef.current = L.marker([initCoords.lat, initCoords.lng], { icon }).addTo(map)
 
-      markerRef.current = L.marker([initLat, initLng], { icon }).addTo(map)
-
-      // Click → move AOI + fetch
+      // Click → sanitize coords → move AOI + fetch
       map.on('click', (e: any) => {
-        const { lat, lng } = e.latlng
-        const roundedLat = parseFloat(lat.toFixed(5))
-        const roundedLng = parseFloat(lng.toFixed(5))
-        setCoords({ lat: roundedLat, lng: roundedLng })
-        markerRef.current?.setLatLng([roundedLat, roundedLng])
-        fetchIntel(roundedLat, roundedLng)
-        router.replace(`/portal/viewer?lat=${roundedLat}&lng=${roundedLng}`, { scroll: false })
+        const safe = sanitizeCoords(e.latlng.lat, e.latlng.lng)
+        setCoords(safe)
+        markerRef.current?.setLatLng([safe.lat, safe.lng])
+        fetchIntel(safe.lat, safe.lng)
+        router.replace(`/portal/viewer?lat=${safe.lat}&lng=${safe.lng}`, { scroll: false })
       })
 
+      // Mousemove — sanitize to prevent -439 display
       map.on('mousemove', (e: any) => {
-        setCursorCoords({ lat: parseFloat(e.latlng.lat.toFixed(5)), lng: parseFloat(e.latlng.lng.toFixed(5)) })
+        const safe = sanitizeCoords(e.latlng.lat, e.latlng.lng)
+        setCursorCoords(safe)
       })
-
-      map.on('mouseleave', () => setCursorCoords(null))
+      map.on('mouseout', () => setCursorCoords(null))
       map.on('zoom', () => setZoom(map.getZoom()))
     }
 
     initMap()
-    fetchIntel(initLat, initLng)
-
+    fetchIntel(initCoords.lat, initCoords.lng)
     return () => {
       leafletRef.current?.remove()
       leafletRef.current = null
@@ -271,11 +282,9 @@ function ViewerInner() {
     const L = (await import('leaflet')).default
     const map = leafletRef.current
     if (!map) return
-
     setLayers(prev => prev.map(l => {
       if (l.id !== id) return l
       const newActive = !l.active
-
       if (!newActive) {
         layerRefs.current[id]?.remove()
         delete layerRefs.current[id]
@@ -333,7 +342,6 @@ function ViewerInner() {
             </div>
             <span className="text-[#2a3a2e] text-[9px]">{layers.filter(l => l.active).length} on</span>
           </div>
-
           <div className="flex-1 overflow-y-auto">
             {GROUPS.map(group => {
               const gl = layers.filter(l => l.group === group)
@@ -388,7 +396,6 @@ function ViewerInner() {
               )
             })}
           </div>
-
           <div className="px-4 py-3 border-t border-[#1a2a1e]">
             <button
               onClick={() => router.push('/portal/globe')}
@@ -403,7 +410,6 @@ function ViewerInner() {
 
       {/* ── Map Area ──────────────────────────────────────────────────── */}
       <div className="flex-1 relative">
-
         {/* Sidebar toggle */}
         <button
           onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -424,10 +430,10 @@ function ViewerInner() {
           >−</button>
         </div>
 
-        {/* Map */}
+        {/* Map canvas */}
         <div ref={mapRef} className="w-full h-full" style={{ cursor: 'crosshair' }} />
 
-        {/* Cursor coords */}
+        {/* Cursor coords — sanitized, always valid */}
         {cursorCoords && (
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-[#0b0f0c]/90 border border-[#1a2a1e] px-4 py-1.5 pointer-events-none z-10">
             <span className="text-[#2a3a2e] text-[9px] tracking-widest font-mono">
@@ -489,7 +495,6 @@ function ViewerInner() {
 
           {intel && !intelLoading && (
             <div className="p-4 space-y-4">
-
               {/* Location */}
               <div>
                 <p className="text-[#2a3a2e] text-[8px] tracking-[0.25em] mb-2">COORDINATES</p>
