@@ -904,3 +904,246 @@ async def scan_aoi(lat: float, lng: float, radius_m: float = 500.0):
     result["quality"]["ndvi_suppressed"] = not context["ndvi_valid"]
 
     return result
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# /scan v2 — Terrain anomaly detection engine
+# ══════════════════════════════════════════════════════════════════════════════
+
+import math as _math_scan
+import asyncio as _asyncio_scan
+import string as _string
+
+def _hex_grid(lat: float, lng: float, radius_m: float, spacing_m: float = 30.0):
+    lat_m = 1.0 / 111320.0
+    lng_m = 1.0 / (111320.0 * _math_scan.cos(_math_scan.radians(lat)))
+    row_sp = spacing_m * _math_scan.sqrt(3) / 2
+    rows = int(radius_m / row_sp) + 1
+    pts = []
+    for row in range(-rows, rows + 1):
+        y = row * row_sp
+        x0 = (spacing_m / 2) if (row % 2) else 0
+        cols = int((radius_m - abs(y)) / spacing_m) + 1
+        for col in range(-cols, cols + 1):
+            x = col * spacing_m + x0
+            if _math_scan.sqrt(x**2 + y**2) <= radius_m:
+                pts.append((round(lat + y * lat_m, 6), round(lng + x * lng_m, 6)))
+    return pts
+
+
+def _fetch_dem_wcs(lat: float, lng: float, radius_m: float, spacing_m: float = 30.0):
+    """Try 3DEP WCS raster; return {(lat,lng): elev} or None."""
+    try:
+        from io import BytesIO
+        import numpy as np
+        import rasterio
+
+        buf = (radius_m * 1.15) / 111320.0
+        lng_buf = (radius_m * 1.15) / (111320.0 * _math_scan.cos(_math_scan.radians(lat)))
+        minx, miny = lng - lng_buf, lat - buf
+        maxx, maxy = lng + lng_buf, lat + buf
+
+        url = (
+            "https://elevation.nationalmap.gov/arcgis/services/3DEPElevation/ImageServer/WCSServer"
+            f"?SERVICE=WCS&VERSION=1.0.0&REQUEST=GetCoverage"
+            f"&COVERAGE=DEP3Elevation_1m&CRS=EPSG:4326"
+            f"&BBOX={minx},{miny},{maxx},{maxy}&WIDTH=512&HEIGHT=512&FORMAT=GeoTIFF"
+        )
+        resp = httpx.get(url, timeout=20)
+        if resp.status_code != 200 or len(resp.content) < 2000:
+            return None
+
+        with rasterio.open(BytesIO(resp.content)) as ds:
+            data = ds.read(1).astype(float)
+            nodata = ds.nodata if ds.nodata is not None else -9999
+            transform = ds.transform
+            h, w = data.shape
+
+        grid = _hex_grid(lat, lng, radius_m, spacing_m)
+        elevs = {}
+        for pt_lat, pt_lng in grid:
+            col = int((pt_lng - transform.c) / transform.a)
+            row = int((pt_lat - transform.f) / transform.e)
+            if 0 <= row < h and 0 <= col < w:
+                v = float(data[row, col])
+                if v != nodata and -500 < v < 9000:
+                    elevs[(pt_lat, pt_lng)] = v
+        return elevs if len(elevs) >= max(10, len(grid) * 0.3) else None
+    except Exception:
+        return None
+
+
+async def _fetch_epqs_async(points: list, concurrency: int = 25):
+    """Async batch EPQS with semaphore."""
+    sem = _asyncio_scan.Semaphore(concurrency)
+    results = {}
+
+    async def _one(pt_lat, pt_lng):
+        async with sem:
+            try:
+                url = f"https://epqs.nationalmap.gov/v1/json?x={pt_lng}&y={pt_lat}&wkid=4326&includeDate=false"
+                async with httpx.AsyncClient(timeout=7) as c:
+                    r = await c.get(url)
+                    v = r.json().get("value")
+                    if v and str(v) not in ["-1000000", "None", "null"]:
+                        results[(pt_lat, pt_lng)] = float(v)
+            except Exception:
+                pass
+
+    await _asyncio_scan.gather(*[_one(la, ln) for la, ln in points])
+    return results
+
+
+def _dbscan(elevated: list, eps_m: float = 65.0, min_pts: int = 3):
+    """Simple DBSCAN on (lat, lng, elev) triples."""
+    def dm(a, b):
+        dlat = (a[0] - b[0]) * 111320.0
+        dlng = (a[1] - b[1]) * 111320.0 * _math_scan.cos(_math_scan.radians(a[0]))
+        return _math_scan.sqrt(dlat**2 + dlng**2)
+
+    visited, clusters = set(), []
+
+    def expand(i, cl):
+        q = [i]
+        while q:
+            idx = q.pop()
+            if idx in visited:
+                continue
+            visited.add(idx)
+            cl.append(elevated[idx])
+            nb = [j for j in range(len(elevated)) if j not in visited and dm(elevated[idx], elevated[j]) <= eps_m]
+            if len(nb) >= min_pts:
+                q.extend(nb)
+
+    for i in range(len(elevated)):
+        if i in visited:
+            continue
+        nb = [j for j in range(len(elevated)) if dm(elevated[i], elevated[j]) <= eps_m]
+        if len(nb) >= min_pts:
+            cl = []
+            expand(i, cl)
+            if cl:
+                clusters.append(cl)
+    return clusters
+
+
+def _score_candidate(cluster: list, mean_elev: float, cid: str):
+    lats = [p[0] for p in cluster]
+    lngs = [p[1] for p in cluster]
+    elevs = [p[2] for p in cluster]
+    clat, clng = sum(lats)/len(lats), sum(lngs)/len(lngs)
+    height = round(max(elevs) - mean_elev, 2)
+
+    max_d = 0.0
+    for i in range(len(cluster)):
+        for j in range(i+1, len(cluster)):
+            dlat = (cluster[i][0]-cluster[j][0])*111320.0
+            dlng = (cluster[i][1]-cluster[j][1])*111320.0*_math_scan.cos(_math_scan.radians(clat))
+            d = _math_scan.sqrt(dlat**2+dlng**2)
+            if d > max_d: max_d = d
+    diam = round(max_d + 30, 1)
+
+    area = len(cluster) * 900  # 30m² per point
+    exp_area = _math_scan.pi * (diam/2)**2
+    circ = round(min(1.0, area / max(exp_area, 1)), 2)
+
+    score = round(
+        min(1.0, height/5.0) * 0.35 +
+        circ * 0.35 +
+        min(1.0, len(cluster)/20.0) * 0.30,
+        2
+    )
+    conf = "high" if score > 0.70 else "moderate" if score > 0.45 else "low"
+
+    return {
+        "id": cid,
+        "lat": round(clat, 6),
+        "lng": round(clng, 6),
+        "score": score,
+        "confidence": conf,
+        "height_above_mean_m": height,
+        "diameter_m": diam,
+        "circularity": circ,
+        "point_count": len(cluster),
+        "type": "raised terrain anomaly"
+    }
+
+
+@app.get("/scan")
+async def scan_aoi_v2(lat: float, lng: float, radius_m: float = 500.0):
+    lat = max(-90.0, min(90.0, lat))
+    lng = ((lng + 180) % 360 + 360) % 360 - 180
+    spacing_m = 30.0
+
+    context = classify_surface_context(lat, lng)
+    grid = _hex_grid(lat, lng, radius_m, spacing_m)
+
+    # ── 1. Try 3DEP WCS raster ───────────────────────────────────────────
+    elevations = None
+    dem_method = "epqs_async"
+    if -125 <= lng <= -66 and 24 <= lat <= 50:
+        elevations = _fetch_dem_wcs(lat, lng, radius_m, spacing_m)
+        if elevations:
+            dem_method = "3dep_wcs"
+
+    # ── 2. Fallback: async EPQS batch ────────────────────────────────────
+    if not elevations:
+        # Sample subset to stay within timeout — max 200 points
+        sample = grid if len(grid) <= 200 else grid[::max(1, len(grid)//200)]
+        elevations = await _fetch_epqs_async(sample)
+        if elevations:
+            dem_method = "epqs_async"
+
+    if not elevations or len(elevations) < 5:
+        return {
+            "location": {"lat": lat, "lng": lng},
+            "radius_m": radius_m,
+            "context": context,
+            "grid": {"spacing_m": spacing_m, "sample_count": len(grid)},
+            "terrain": {"mean_elevation_m": None, "source": dem_method},
+            "candidates": [],
+            "note": "Insufficient elevation data — outside 3DEP coverage or timeout"
+        }
+
+    # ── 3. Stats ─────────────────────────────────────────────────────────
+    vals = list(elevations.values())
+    import statistics
+    mean_e = statistics.mean(vals)
+    std_e = statistics.stdev(vals) if len(vals) > 1 else 0.0
+    threshold = max(mean_e + std_e, mean_e + 1.5)
+
+    # ── 4. Flag elevated points ──────────────────────────────────────────
+    elevated = [(la, ln, el) for (la, ln), el in elevations.items() if el > threshold]
+
+    # ── 5. Cluster ───────────────────────────────────────────────────────
+    clusters = _dbscan(elevated) if elevated else []
+
+    # ── 6. Score candidates ──────────────────────────────────────────────
+    labels = list(_string.ascii_uppercase)
+    candidates = []
+    for i, cl in enumerate(sorted(clusters, key=lambda c: -max(p[2] for p in c))):
+        cid = labels[i] if i < len(labels) else str(i+1)
+        candidates.append(_score_candidate(cl, mean_e, cid))
+
+    # Sort by score descending
+    candidates.sort(key=lambda c: -c["score"])
+
+    return {
+        "location": {"lat": lat, "lng": lng},
+        "radius_m": radius_m,
+        "context": context,
+        "grid": {
+            "spacing_m": spacing_m,
+            "sample_count": len(grid),
+            "sampled_count": len(elevations)
+        },
+        "terrain": {
+            "mean_elevation_m": round(mean_e, 2),
+            "std_elevation_m": round(std_e, 2),
+            "threshold_m": round(threshold, 2),
+            "source": dem_method,
+            "elevated_point_count": len(elevated)
+        },
+        "candidates": candidates,
+        "note": f"{len(candidates)} candidate(s) detected via {dem_method}"
+    }
