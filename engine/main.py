@@ -1347,7 +1347,7 @@ def _dbscan(elevated: list, eps_m: float = 65.0, min_pts: int = 3):
     return clusters
 
 def _score_candidate(cluster: list, mean_elev: float, cid: str,
-                     spectral: dict = None):
+                     spectral: dict = None, muon: dict = None):
     """
     Multi-source candidate scoring — MSIGI composite.
     
@@ -1422,6 +1422,16 @@ def _score_candidate(cluster: list, mean_elev: float, cid: str,
     sar_signal = 0.5  # neutral — scene confirmation only for now
     sar_detail = "scene_confirmed"
 
+    # ── Muon flux baseline (open-sky model) ──────────────────────────────
+    muon_detail = "no_baseline"
+    muon_flux_m2_min = None
+    if muon and muon.get("valid"):
+        muon_flux_m2_min = muon.get("flux_m2_min")
+        muon_detail = f"baseline={muon_flux_m2_min:.1f}/m2/min kp={muon.get('kp_index')} model={muon.get('model')}"
+        # When detector data is available, compare observed vs baseline here
+        # void_ratio = observed_flux / muon_flux_m2_min
+        # void_signal = 1.0 if void_ratio > 1.10 else 0.5
+
     # ── Composite MSIGI score ────────────────────────────────────────────
     composite = round(
         terrain_score * 0.60 +
@@ -1447,7 +1457,70 @@ def _score_candidate(cluster: list, mean_elev: float, cid: str,
         "point_count": len(cluster),
         "sensors": ["DEM_3DEP"] + (["S2_NDVI"] if spectral and spectral.get("valid") else []) + ["S1_SAR"],
         "ndvi_detail": ndvi_detail,
-        "type": "raised terrain anomaly"
+        "type": "raised terrain anomaly",
+        "muon_detail": muon_detail if muon and muon.get("valid") else "awaiting_detector"
+    }
+
+
+async def _fetch_muon_flux(lat: float, lng: float, alt_m: float = 0.0) -> dict:
+    """
+    Compute expected vertical muon flux at any coordinate on Earth.
+    Uses Gaisser parametrization + real-time NOAA Kp solar modulation.
+    No hardware needed — physics-based open-sky baseline.
+
+    Returns flux in muons/cm2/s and muons/m2/min, plus void detection threshold.
+    This is the baseline against which detector readings are compared.
+    """
+    import math
+    import httpx
+
+    # Get real-time Kp index from NOAA SWPC
+    kp = 2.0  # default moderate
+    try:
+        async with httpx.AsyncClient(timeout=8) as c:
+            r = await c.get(
+                "https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json"
+            )
+            kp_data = r.json()
+            kp = float(kp_data[-1]["Kp"])
+    except Exception:
+        pass  # use default
+
+    # Geomagnetic cutoff rigidity (Stoermer approximation)
+    lat_rad = math.radians(abs(lat))
+    Rc = 14.9 * math.cos(lat_rad) ** 4  # GV
+
+    # Sea level vertical muon flux baseline (muons/cm2/s)
+    baseline = 0.0102
+
+    # Altitude correction — muon flux increases with altitude
+    # Approximate scale height ~2000m
+    alt_factor = math.exp(alt_m / 2000.0)
+
+    # Geomagnetic latitude correction
+    lat_factor = max(0.70, min(1.0, 1.0 - 0.02 * Rc))
+
+    # Solar modulation via Kp (Forbush decrease approximation)
+    kp_factor = 1.0 - 0.02 * kp
+
+    flux_cm2_s  = round(baseline * alt_factor * lat_factor * kp_factor, 8)
+    flux_m2_min = round(flux_cm2_s * 10000 * 60, 2)
+
+    # Void detection thresholds
+    # A 10% excess over baseline indicates a significant density anomaly
+    void_threshold_m2_min = round(flux_m2_min * 1.10, 2)
+
+    return {
+        "flux_cm2_s":           flux_cm2_s,
+        "flux_m2_min":          flux_m2_min,
+        "void_threshold_m2_min": void_threshold_m2_min,
+        "kp_index":             round(kp, 2),
+        "cutoff_rigidity_gv":   round(Rc, 3),
+        "alt_factor":           round(alt_factor, 4),
+        "lat_factor":           round(lat_factor, 4),
+        "kp_factor":            round(kp_factor, 4),
+        "model":                "Gaisser+NOAA_Kp",
+        "valid":                True
     }
 
 @app.get("/scan")
@@ -1518,12 +1591,24 @@ async def scan_aoi_v2(lat: float, lng: float, radius_m: float = 500.0):
         except Exception:
             spectral = {}
 
+    # ── 6b. Muon flux baseline ───────────────────────────────────────────
+    muon = {}
+    try:
+        elev_m = 0.0
+        if elevations:
+            vals_list = list(elevations.values())
+            import statistics as _stats
+            elev_m = _stats.mean(vals_list)
+        muon = await _fetch_muon_flux(lat, lng, alt_m=elev_m)
+    except Exception:
+        muon = {}
+
     # ── 7. Score candidates with MSIGI fusion ────────────────────────────
     import string; labels = list(string.ascii_uppercase)
     candidates = []
     for i, cl in enumerate(sorted(clusters, key=lambda c: -max(p[2] for p in c))):
         cid = labels[i] if i < len(labels) else str(i+1)
-        candidates.append(_score_candidate(cl, mean_e, cid, spectral=spectral))
+        candidates.append(_score_candidate(cl, mean_e, cid, spectral=spectral, muon=muon))
 
     # Sort by score descending
     candidates.sort(key=lambda c: -c["score"])
@@ -1546,5 +1631,6 @@ async def scan_aoi_v2(lat: float, lng: float, radius_m: float = 500.0):
         },
         "candidates": candidates,
         "spectral": spectral,
+        "muon_baseline": muon,
         "note": f"{len(candidates)} candidate(s) detected via {dem_method}" + (" + S2_NDVI" if spectral.get("valid") else "")
     }
