@@ -461,7 +461,7 @@ export default function PortalGlobe() {
             )}
 
             <div className="border-t border-[#1a2a1e]">
-              
+              <a
                 href={`/portal/viewer?lat=${readout?.lat}&lng=${readout?.lng}`}
                 className="w-full flex items-center justify-center gap-2 py-2.5 bg-[#0d1410] hover:bg-[#111a14] transition-colors border-b border-[#1a2a1e]"
               >
