@@ -56,18 +56,42 @@ interface ScanCandidate {
   lat: number
   lng: number
   score: number
+  terrain_score: number
+  ndvi_signal: number
+  sar_signal: number
   confidence: string
   height_above_mean_m: number
   diameter_m: number
   circularity: number
   point_count: number
   type: string
+  sensors: string[]
+  ndvi_detail: string
+  muon_detail: string
+}
+interface SpectralData {
+  ndvi_mean: number
+  ndvi_std: number
+  cloud_cover: number
+  date: string
+  pixel_count: number
+  valid: boolean
+}
+interface MuonBaseline {
+  flux_m2_min: number
+  void_threshold_m2_min: number
+  kp_index: number
+  cutoff_rigidity_gv: number
+  model: string
+  valid: boolean
 }
 interface ScanData {
   candidates: ScanCandidate[]
   radius_m: number
   grid: { spacing_m: number; sample_count: number; sampled_count: number }
-  terrain: { mean_elevation_m: number; std_elevation_m: number; elevated_point_count: number }
+  terrain: { mean_elevation_m: number; std_elevation_m: number; threshold_m: number; elevated_point_count: number; source: string }
+  spectral: SpectralData
+  muon_baseline: MuonBaseline
   note: string
 }
 
@@ -722,6 +746,7 @@ function ViewerInner() {
             </div>
             {scan && !scanLoading && (
               <>
+                {/* ── Terrain stats ── */}
                 <div className="flex gap-3 mb-3">
                   <div>
                     <p className="text-[#c8c4ba] text-[11px]">{scan.candidates.length}</p>
@@ -736,20 +761,79 @@ function ViewerInner() {
                     <p className="text-[#2a3a2e] text-[7px] tracking-widest">MEAN ELEV</p>
                   </div>
                 </div>
+                <div className="mb-3 space-y-1">
+                  <ReadoutRow label="STD" value={`±${scan.terrain?.std_elevation_m ?? '—'}m`} />
+                  <ReadoutRow label="THRESHOLD" value={`${scan.terrain?.threshold_m ?? '—'}m`} accent="#a78bfa" />
+                  <ReadoutRow label="ELEVATED PTS" value={`${scan.terrain?.elevated_point_count ?? '—'}`} />
+                  <ReadoutRow label="DEM SOURCE" value={scan.terrain?.source ?? '—'} />
+                </div>
+
+                {/* ── Spectral (S2 NDVI) ── */}
+                {scan.spectral?.valid && (
+                  <div className="border-t border-[#1a2a1e] pt-2 mb-3">
+                    <p className="text-[#2a3a2e] text-[7px] tracking-[0.25em] mb-1">S2 SPECTRAL</p>
+                    <ReadoutRow label="NDVI MEAN" value={scan.spectral.ndvi_mean?.toFixed(3) ?? '—'}
+                      accent={scan.spectral.ndvi_mean < 0.2 ? '#f87171' : scan.spectral.ndvi_mean < 0.4 ? '#fbbf24' : '#4ade80'} />
+                    <ReadoutRow label="NDVI STD" value={`±${scan.spectral.ndvi_std?.toFixed(3) ?? '—'}`} />
+                    <ReadoutRow label="CLOUD" value={`${scan.spectral.cloud_cover?.toFixed(1) ?? '—'}%`} sub={scan.spectral.date} />
+                    <ReadoutRow label="PIXELS" value={scan.spectral.pixel_count?.toLocaleString() ?? '—'} />
+                  </div>
+                )}
+
+                {/* ── Muon baseline ── */}
+                {scan.muon_baseline?.valid && (
+                  <div className="border-t border-[#1a2a1e] pt-2 mb-3">
+                    <p className="text-[#2a3a2e] text-[7px] tracking-[0.25em] mb-1">MUON BASELINE</p>
+                    <ReadoutRow label="FLUX" value={`${scan.muon_baseline.flux_m2_min?.toFixed(0) ?? '—'}/m²/min`} accent="#a78bfa" />
+                    <ReadoutRow label="VOID THRESH" value={`${scan.muon_baseline.void_threshold_m2_min?.toFixed(0) ?? '—'}/m²/min`} />
+                    <ReadoutRow label="Kp INDEX" value={`${scan.muon_baseline.kp_index ?? '—'}`}
+                      accent={scan.muon_baseline.kp_index > 5 ? '#f87171' : scan.muon_baseline.kp_index > 3 ? '#fbbf24' : '#5b7c6f'} />
+                    <ReadoutRow label="RIGIDITY" value={`${scan.muon_baseline.cutoff_rigidity_gv ?? '—'} GV`} />
+                    <ReadoutRow label="MODEL" value={scan.muon_baseline.model ?? '—'} />
+                  </div>
+                )}
+
+                {/* ── Candidates ── */}
                 {scan.candidates.length === 0 && (
                   <p className="text-[#2a3a2e] text-[8px]">No anomalies detected</p>
                 )}
-                {scan.candidates.slice(0, 6).map((c) => {
+                {scan.candidates.slice(0, 8).map((c) => {
                   const color = c.score > 0.7 ? '#f87171' : c.score > 0.4 ? '#fbbf24' : '#5b7c6f'
                   return (
-                    <div key={c.id} className="border-b border-[#1a2a1e] py-1.5 last:border-0">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[8px] font-mono" style={{ color }}>{c.id} · {c.type.replace('raised terrain anomaly','terrain')}</span>
-                        <span className="text-[9px] font-mono" style={{ color }}>{c.score.toFixed(2)}</span>
+                    <div key={c.id} className="border-b border-[#1a2a1e] py-2 last:border-0">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[9px] font-mono font-medium" style={{ color }}>{c.id}</span>
+                        <span className="text-[10px] font-mono" style={{ color }}>{c.score.toFixed(2)}</span>
+                      </div>
+                      <div className="flex gap-2 mb-1">
+                        <div className="flex-1 h-0.5 rounded-full bg-[#1a2a1e] overflow-hidden">
+                          <div className="h-full bg-[#fb923c] rounded-full" style={{ width: `${(c.terrain_score ?? 0) * 100}%` }} />
+                        </div>
+                        <div className="flex-1 h-0.5 rounded-full bg-[#1a2a1e] overflow-hidden">
+                          <div className="h-full bg-[#4ade80] rounded-full" style={{ width: `${(c.ndvi_signal ?? 0.5) * 100}%` }} />
+                        </div>
+                        <div className="flex-1 h-0.5 rounded-full bg-[#1a2a1e] overflow-hidden">
+                          <div className="h-full bg-[#a78bfa] rounded-full" style={{ width: `${(c.sar_signal ?? 0.5) * 100}%` }} />
+                        </div>
+                      </div>
+                      <div className="flex gap-1 mb-1">
+                        <span className="text-[6px] text-[#fb923c] flex-1">DEM</span>
+                        <span className="text-[6px] text-[#4ade80] flex-1">NDVI</span>
+                        <span className="text-[6px] text-[#a78bfa] flex-1">SAR</span>
                       </div>
                       <p className="text-[#2a3a2e] text-[7px]">
                         ⌀{Math.round(c.diameter_m)}m · +{c.height_above_mean_m}m · {c.confidence}
                       </p>
+                      {c.muon_detail && c.muon_detail !== 'awaiting_detector' && (
+                        <p className="text-[#2a3a2e] text-[7px] mt-0.5">μ {c.muon_detail.split(' ')[0]}</p>
+                      )}
+                      {c.sensors && (
+                        <div className="flex gap-1 mt-1 flex-wrap">
+                          {c.sensors.map((s: string) => (
+                            <span key={s} className="text-[6px] px-1 py-0.5 border border-[#1a2a1e] text-[#2a3a2e]">{s}</span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )
                 })}
