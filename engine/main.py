@@ -177,9 +177,33 @@ def analyze(lat: float, lng: float):
     except Exception as e:
         measurements["sar"] = {"status": "error", "detail": str(e)}
 
-    # ── Elevation — USGS EPQS for US, SRTM globally ──
+    # ── Elevation — 3DEP WCS tile (US) or SRTM fallback ──
     try:
         if -125 <= lng <= -66 and 24 <= lat <= 50:
+            # Fetch small WCS tile, sample center pixel — same source as /scan
+            wcs_result = _fetch_dem_wcs(lat, lng, radius_m=150, spacing_m=10.0)
+            if wcs_result and len(wcs_result) >= 1:
+                # Pick the point closest to the requested coordinate
+                import math
+                best_pt = min(wcs_result.keys(),
+                    key=lambda pt: math.sqrt((pt[0]-lat)**2 + (pt[1]-lng)**2))
+                elev_val = wcs_result[best_pt]
+                measurements["elevation"] = {
+                    "value": round(float(elev_val), 2),
+                    "unit": "m",
+                    "source": "USGS 3DEP WCS",
+                    "asset": "National Elevation Dataset (1m)",
+                    "resolution_m": 1,
+                    "method": "wcs_tile_center",
+                    "status": "found"
+                }
+            else:
+                raise ValueError("WCS no data")
+        else:
+            raise ValueError("outside US bounds")
+    except Exception:
+        try:
+            # EPQS fallback for US if WCS fails
             r = httpx.get(
                 f"https://epqs.nationalmap.gov/v1/json?x={lng}&y={lat}&wkid=4326&units=Meters&includeDate=false",
                 timeout=8
@@ -198,27 +222,25 @@ def analyze(lat: float, lng: float):
                 }
             else:
                 raise ValueError("EPQS no data")
-        else:
-            raise ValueError("outside US bounds")
-    except Exception:
-        try:
-            r = httpx.get(
-                f"https://api.open-elevation.com/api/v1/lookup?locations={lat},{lng}",
-                timeout=8
-            )
-            elev_data = r.json()
-            elevation = elev_data["results"][0]["elevation"]
-            measurements["elevation"] = {
-                "value": round(float(elevation), 1),
-                "unit": "m",
-                "source": "SRTM v3",
-                "asset": "open-elevation.com",
-                "resolution_m": 90,
-                "method": "point_query",
-                "status": "found"
-            }
         except Exception:
-            measurements["elevation"] = {"status": "unavailable"}
+            try:
+                r = httpx.get(
+                    f"https://api.open-elevation.com/api/v1/lookup?locations={lat},{lng}",
+                    timeout=8
+                )
+                elev_data = r.json()
+                elevation = elev_data["results"][0]["elevation"]
+                measurements["elevation"] = {
+                    "value": round(float(elevation), 1),
+                    "unit": "m",
+                    "source": "SRTM v3",
+                    "asset": "open-elevation.com",
+                    "resolution_m": 90,
+                    "method": "point_query",
+                    "status": "found"
+                }
+            except Exception:
+                measurements["elevation"] = {"status": "unavailable"}
 
     # ── Landsat-9 thermal — real ST_B10 pixel ──
     try:
