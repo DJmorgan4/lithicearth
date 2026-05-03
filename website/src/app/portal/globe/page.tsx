@@ -76,10 +76,22 @@ function GlobeScene({ posts, stratumSites, onGlobeClick, onMouseMove, onStratumS
 
   useEffect(() => {
     const loader = new THREE.TextureLoader();
-    loader.load('/earth.jpg', (t) => {
-      t.colorSpace = THREE.SRGBColorSpace;
-      setTexture(t);
-    });
+    // Try multiple sources — fallback chain
+    const sources = [
+      'https://unpkg.com/three-globe/example/img/earth-dark.jpg',
+      'https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/planets/earth_atmos_2048.jpg',
+    ];
+    let loaded = false;
+    const tryLoad = (idx: number) => {
+      if (idx >= sources.length) return;
+      loader.load(
+        sources[idx],
+        (t) => { if (!loaded) { loaded = true; t.colorSpace = THREE.SRGBColorSpace; setTexture(t); } },
+        undefined,
+        () => tryLoad(idx + 1)
+      );
+    };
+    tryLoad(0);
   }, []);
 
   useFrame(() => { if (globeRef.current) globeRef.current.rotation.y += 0.00003; });
@@ -448,6 +460,14 @@ export default function PortalGlobe() {
               </div>
             )}
 
+            <div className="border-t border-[#1a2a1e]">
+              
+                href={`/portal/viewer?lat=${readout?.lat}&lng=${readout?.lng}`}
+                className="w-full flex items-center justify-center gap-2 py-2.5 bg-[#0d1410] hover:bg-[#111a14] transition-colors border-b border-[#1a2a1e]"
+              >
+                <span className="text-[#D4AF37] text-[9px] tracking-[0.2em] font-light">→ OPEN IN VIEWER</span>
+              </a>
+            </div>
             <div className="border-t border-[#1a2a1e] grid grid-cols-3 gap-px bg-[#1a2a1e]">
               <button onClick={flagAnomaly} disabled={flagging || flagDone} className="bg-[#0d1410] px-3 py-2.5 flex items-center justify-center gap-1.5 hover:bg-[#111a14] transition-colors disabled:opacity-50">
                 {flagDone ? <Check size={10} className="text-[#5b7c6f]" /> : flagging ? <AlertCircle size={10} className="text-[#5b7c6f] animate-pulse" /> : <Flag size={10} className="text-[#5b7c6f]" />}
