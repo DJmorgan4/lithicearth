@@ -51,6 +51,26 @@ interface IntelData {
   note: string
 }
 
+interface ScanCandidate {
+  id: string
+  lat: number
+  lng: number
+  score: number
+  confidence: string
+  height_above_mean_m: number
+  diameter_m: number
+  circularity: number
+  point_count: number
+  type: string
+}
+interface ScanData {
+  candidates: ScanCandidate[]
+  radius_m: number
+  grid: { spacing_m: number; sample_count: number; sampled_count: number }
+  terrain: { mean_elevation_m: number; std_elevation_m: number; elevated_point_count: number }
+  note: string
+}
+
 // ── Layer definitions ──────────────────────────────────────────────────
 const LAYER_DEFS: LayerDef[] = [
   {
@@ -208,6 +228,9 @@ function ViewerInner() {
   const [intelError, setIntelError] = useState(false)
   const [copied, setCopied] = useState(false)
   const [zoom, setZoom] = useState(14)
+  const [scan, setScan] = useState<ScanData | null>(null)
+  const [scanLoading, setScanLoading] = useState(false)
+  const scanLayerRef = useRef<any>(null)
 
   // ── Fetch intel from engine ──────────────────────────────────────────
   const fetchIntel = useCallback(async (lat: number, lng: number) => {
@@ -227,6 +250,44 @@ function ViewerInner() {
     } finally {
       setIntelLoading(false)
     }
+  }, [])
+
+  // ── Fetch scan from engine ──────────────────────────────────────────
+  const fetchScan = useCallback(async (lat: number, lng: number) => {
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return
+    setScanLoading(true)
+    setScan(null)
+    if (scanLayerRef.current && leafletRef.current) {
+      scanLayerRef.current.remove()
+      scanLayerRef.current = null
+    }
+    try {
+      const res = await fetch(`/api/scan?lat=${lat}&lng=${lng}&radius=600`)
+      if (!res.ok) throw new Error('scan failed')
+      const data: ScanData = await res.json()
+      setScan(data)
+      if (leafletRef.current && data.candidates?.length) {
+        const L = (await import('leaflet')).default
+        const group = L.layerGroup()
+        data.candidates.forEach((c) => {
+          const color = c.score > 0.7 ? '#f87171' : c.score > 0.4 ? '#fbbf24' : '#5b7c6f'
+          L.circle([c.lat, c.lng], {
+            radius: c.diameter_m / 2,
+            color, weight: 1, opacity: 0.9,
+            fillColor: color, fillOpacity: 0.15,
+          }).bindTooltip(
+            `<div style="font-size:10px;font-family:monospace;background:#0b0f0c;border:1px solid #1a2a1e;color:#c8c4ba;padding:4px 8px"><b>${c.type}</b><br/>score: ${c.score.toFixed(2)} · ⌀${Math.round(c.diameter_m)}m · +${c.height_above_mean_m}m</div>`,
+            { className: '', permanent: false }
+          ).addTo(group)
+          L.circleMarker([c.lat, c.lng], {
+            radius: 3, color, weight: 1, fillColor: color, fillOpacity: 1,
+          }).addTo(group)
+        })
+        group.addTo(leafletRef.current)
+        scanLayerRef.current = group
+      }
+    } catch { /* silent — scan is additive */ }
+    finally { setScanLoading(false) }
   }, [])
 
   // ── Init Leaflet ─────────────────────────────────────────────────────
@@ -270,6 +331,7 @@ function ViewerInner() {
         setCoords(safe)
         markerRef.current?.setLatLng([safe.lat, safe.lng])
         fetchIntel(safe.lat, safe.lng)
+        fetchScan(safe.lat, safe.lng)
         router.replace(`/portal/viewer?lat=${safe.lat}&lng=${safe.lng}`, { scroll: false })
       })
 
@@ -284,6 +346,7 @@ function ViewerInner() {
 
     initMap()
     fetchIntel(initCoords.lat, initCoords.lng)
+    fetchScan(initCoords.lat, initCoords.lng)
     return () => {
       leafletRef.current?.remove()
       leafletRef.current = null
@@ -648,6 +711,52 @@ function ViewerInner() {
             </div>
           )}
         </div>
+
+        {/* Terrain Scan Results */}
+        {(scan || scanLoading) && (
+          <div className="border-t border-[#1a2a1e] p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Atom size={9} style={{ color: '#a78bfa' }} />
+              <p className="text-[8px] tracking-[0.25em]" style={{ color: '#a78bfa' }}>TERRAIN SCAN</p>
+              {scanLoading && <span className="text-[#2a3a2e] text-[8px] animate-pulse ml-auto">SCANNING...</span>}
+            </div>
+            {scan && !scanLoading && (
+              <>
+                <div className="flex gap-3 mb-3">
+                  <div>
+                    <p className="text-[#c8c4ba] text-[11px]">{scan.candidates.length}</p>
+                    <p className="text-[#2a3a2e] text-[7px] tracking-widest">ANOMALIES</p>
+                  </div>
+                  <div>
+                    <p className="text-[#c8c4ba] text-[11px]">{scan.grid?.sampled_count ?? '—'}</p>
+                    <p className="text-[#2a3a2e] text-[7px] tracking-widest">SAMPLES</p>
+                  </div>
+                  <div>
+                    <p className="text-[#c8c4ba] text-[11px]">{scan.terrain?.mean_elevation_m ?? '—'}m</p>
+                    <p className="text-[#2a3a2e] text-[7px] tracking-widest">MEAN ELEV</p>
+                  </div>
+                </div>
+                {scan.candidates.length === 0 && (
+                  <p className="text-[#2a3a2e] text-[8px]">No anomalies detected</p>
+                )}
+                {scan.candidates.slice(0, 6).map((c) => {
+                  const color = c.score > 0.7 ? '#f87171' : c.score > 0.4 ? '#fbbf24' : '#5b7c6f'
+                  return (
+                    <div key={c.id} className="border-b border-[#1a2a1e] py-1.5 last:border-0">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[8px] font-mono" style={{ color }}>{c.id} · {c.type.replace('raised terrain anomaly','terrain')}</span>
+                        <span className="text-[9px] font-mono" style={{ color }}>{c.score.toFixed(2)}</span>
+                      </div>
+                      <p className="text-[#2a3a2e] text-[7px]">
+                        ⌀{Math.round(c.diameter_m)}m · +{c.height_above_mean_m}m · {c.confidence}
+                      </p>
+                    </div>
+                  )
+                })}
+              </>
+            )}
+          </div>
+        )}
 
         {/* Actions */}
         <div className="border-t border-[#1a2a1e] p-3 space-y-2">
