@@ -1,8 +1,10 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Optional, List
 import uuid
 import os
+import traceback
 from supabase import create_client
 
 router = APIRouter(prefix="/api/signals", tags=["whisper"])
@@ -34,35 +36,43 @@ class ScanBatch(BaseModel):
 
 @router.post("/ingest")
 async def ingest_signals(batch: ScanBatch):
-    session_id = batch.scan_session or str(uuid.uuid4())
-    rows = [{**r.dict(), "scan_session": session_id} for r in batch.readings]
-    supabase.table("signal_scans").insert(rows).execute()
-    return {"session_id": session_id, "ingested": len(rows), "status": "ok"}
+    try:
+        session_id = batch.scan_session or str(uuid.uuid4())
+        rows = [{**r.dict(), "scan_session": session_id} for r in batch.readings]
+        result = supabase.table("signal_scans").insert(rows).execute()
+        return {"session_id": session_id, "ingested": len(rows), "status": "ok"}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e), "trace": traceback.format_exc()})
 
 @router.get("/session/{session_id}")
 async def get_session(session_id: str):
-    result = supabase.table("signal_scans")\
-        .select("*")\
-        .eq("scan_session", session_id)\
-        .execute()
-    return result.data
+    try:
+        result = supabase.table("signal_scans")\
+            .select("*")\
+            .eq("scan_session", session_id)\
+            .execute()
+        return result.data
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
 @router.get("/sessions")
 async def list_sessions():
-    result = supabase.table("signal_scans")\
-        .select("scan_session, signal_type, created_at")\
-        .order("created_at", desc=True)\
-        .limit(100)\
-        .execute()
-    # Group by session
-    sessions = {}
-    for row in result.data:
-        sid = row["scan_session"]
-        if sid not in sessions:
-            sessions[sid] = {"scan_session": sid, "count": 0, 
-                           "types": set(), "latest": row["created_at"]}
-        sessions[sid]["count"] += 1
-        sessions[sid]["types"].add(row["signal_type"])
-    return [{"scan_session": v["scan_session"], "count": v["count"],
-             "signal_types": list(v["types"]), "latest": v["latest"]}
-            for v in sessions.values()]
+    try:
+        result = supabase.table("signal_scans")\
+            .select("scan_session, signal_type, created_at")\
+            .order("created_at", desc=True)\
+            .limit(100)\
+            .execute()
+        sessions = {}
+        for row in result.data:
+            sid = row["scan_session"]
+            if sid not in sessions:
+                sessions[sid] = {"scan_session": sid, "count": 0,
+                               "types": set(), "latest": row["created_at"]}
+            sessions[sid]["count"] += 1
+            sessions[sid]["types"].add(row["signal_type"])
+        return [{"scan_session": v["scan_session"], "count": v["count"],
+                 "signal_types": list(v["types"]), "latest": v["latest"]}
+                for v in sessions.values()]
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
