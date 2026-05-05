@@ -78,7 +78,7 @@ function GlobeScene({ posts, stratumSites, onGlobeClick, onMouseMove, onStratumS
     const loader = new THREE.TextureLoader();
     // Try multiple sources — fallback chain
     const sources = [
-      'https://unpkg.com/three-globe/example/img/earth-dark.jpg',
+      '/earth.jpg',
       'https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/planets/earth_atmos_2048.jpg',
     ];
     let loaded = false;
@@ -189,6 +189,8 @@ export default function PortalGlobe() {
   const [savingProject, setSavingProject] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [savingSite, setSavingSiteState] = useState(false);
+  const [narrating, setNarrating] = useState(false);
+  const [narration, setNarration] = useState<string | null>(null);
   const [siteSaved, setSiteSaved] = useState(false);
 
   const supabase = createClient();
@@ -231,6 +233,22 @@ export default function PortalGlobe() {
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+  const narrateLocation = async () => {
+    if (!readout) return;
+    setNarrating(true);
+    setNarration(null);
+    try {
+      const r = await fetch("/api/nexus/narrate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lat: readout.lat, lng: readout.lng, layers, readout })
+      });
+      const j = await r.json();
+      setNarration(j.narration || "No analysis available");
+    } catch { setNarration("ASTRA unavailable"); }
+    finally { setNarrating(false); }
+  };
+
 
   const flagAnomaly = async () => {
     if (!readout || flagging) return;
@@ -346,7 +364,7 @@ export default function PortalGlobe() {
         )}
 
         {readout && (
-          <div className="absolute top-4 right-4 w-64 bg-[#0d1410] border border-[#1a2a1e] z-20">
+          <div className="absolute top-4 right-4 w-64 bg-[#0d1410] border border-[#1a2a1e] z-20 max-h-[85vh] overflow-y-auto">
             <div className="flex items-center justify-between px-4 py-3 border-b border-[#1a2a1e]">
               <span className="text-[#5b7c6f] text-[9px] tracking-[0.25em] font-light">POINT READOUT</span>
               <div className="flex items-center gap-2">
@@ -467,6 +485,15 @@ export default function PortalGlobe() {
               >
                 <span className="text-[#D4AF37] text-[9px] tracking-[0.2em] font-light">→ OPEN IN VIEWER</span>
               </a>
+              <button onClick={narrateLocation} disabled={narrating} className="w-full flex items-center justify-center gap-2 py-2.5 bg-[#0a1410] hover:bg-[#111a14] transition-colors border-b border-[#1a2a1e] disabled:opacity-50">
+                <span className="text-[#12A8AC] text-[9px] tracking-[0.2em] font-light">{narrating ? "ASTRA ANALYZING..." : "→ ASTRA NARRATE"}</span>
+              </button>
+              {narration && (
+                <div className="px-4 py-3 border-b border-[#1a2a1e] bg-[#060e0a] max-h-64 overflow-y-auto">
+                  <p className="text-[#3a4a3e] text-[8px] tracking-[0.15em] mb-1.5">ASTRA NEXUS</p>
+                  <p className="text-[#c8c4ba] text-[10px] font-light leading-relaxed">{narration}</p>
+                </div>
+              )}
             </div>
             <div className="border-t border-[#1a2a1e] grid grid-cols-3 gap-px bg-[#1a2a1e]">
               <button onClick={flagAnomaly} disabled={flagging || flagDone} className="bg-[#0d1410] px-3 py-2.5 flex items-center justify-center gap-1.5 hover:bg-[#111a14] transition-colors disabled:opacity-50">
