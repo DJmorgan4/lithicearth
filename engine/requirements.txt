@@ -11,3 +11,4 @@ rasterio
 rio-tiler
 scikit-learn
 numpy
+supabase

@@ -5,12 +5,14 @@ def normalize_coords(lat: float, lng: float):
 
 
 from fastapi import FastAPI
+from signals import router as signals_router
 from fastapi.middleware.cors import CORSMiddleware
 from pystac_client import Client
 import httpx
 
 app = FastAPI(title="Lithic Engine", version="2.0.0")
 
+app.include_router(signals_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
