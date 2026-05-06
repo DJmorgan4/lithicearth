@@ -126,7 +126,7 @@ function GlobeScene({ posts, stratumSites, onGlobeClick, onMouseMove, onStratumS
   return (
     <>
       {/* Strong ambient so globe is fully visible from all angles */}
-      <ambientLight intensity={3.0} />
+      <ambientLight intensity={4.5} />
       {/* Sun-side directional light for depth */}
       <directionalLight position={[5, 3, 5]} intensity={1.5} color="#ffffff" />
       <directionalLight position={[-5, -2, -3]} intensity={0.4} color="#3366cc" />
@@ -140,7 +140,7 @@ function GlobeScene({ posts, stratumSites, onGlobeClick, onMouseMove, onStratumS
             metalness={0.05}
             emissiveMap={texture}
             emissive={new THREE.Color(0x333333)}
-            emissiveIntensity={0.8}
+            emissiveIntensity={1.2}
           />
         ) : (
           <meshStandardMaterial
