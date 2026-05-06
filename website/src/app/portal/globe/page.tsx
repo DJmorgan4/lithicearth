@@ -125,8 +125,8 @@ function GlobeScene({ posts, stratumSites, onGlobeClick, onMouseMove, onStratumS
 
   return (
     <>
-      <ambientLight intensity={0.12} />
-      <pointLight position={[8, 6, 8]} intensity={1.1} color="#ffffff" />
+      <ambientLight intensity={0.8} />
+      <pointLight position={[8, 6, 8]} intensity={2.0} color="#ffffff" />
       <pointLight position={[-6, -4, -6]} intensity={0.15} color="#5b7c6f" />
       <mesh ref={globeRef} onClick={handleClick} onPointerMove={handleMove}>
         <sphereGeometry args={[2, 128, 64]} />
