@@ -78,10 +78,6 @@ function GlobeScene({ posts, stratumSites, onGlobeClick, onMouseMove, onStratumS
     const loader = new THREE.TextureLoader();
     const sources = [
       '/earth.jpg',
-      'https://cdn.jsdelivr.net/npm/three-globe@2.31.0/example/img/earth-blue-marble.jpg',
-      'https://cdn.jsdelivr.net/npm/three-globe@2.31.0/example/img/earth-blue-marble.jpg',
-      '/earth.jpg',
-      'https://cdn.jsdelivr.net/npm/three-globe@2.31.0/example/img/earth-blue-marble.jpg',
     ];
     let loaded = false;
     const tryLoad = (idx: number) => {
