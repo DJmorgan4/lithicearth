@@ -146,7 +146,7 @@ function GlobeScene({ posts, stratumSites, onGlobeClick, onMouseMove, onStratumS
       </mesh>
       {markerPositions.map((pos, i) => (
         <mesh key={posts[i].id} position={pos}>
-          <sphereGeometry args={[0.008, 6, 6]} />
+          <sphereGeometry args={[0.016, 8, 8]} />
           <meshBasicMaterial color={0x5b7c6f} transparent opacity={0.7} />
         </mesh>
       ))}
@@ -159,13 +159,13 @@ function GlobeScene({ posts, stratumSites, onGlobeClick, onMouseMove, onStratumS
         const color = score < 40 ? '#5b9c6f' : score < 70 ? '#D4AF37' : '#c0503a';
         return (
           <mesh key={site.id} position={pos} onClick={(e) => { e.stopPropagation(); onStratumSiteClick(site); }}>
-            <sphereGeometry args={[0.014, 10, 10]} />
+            <sphereGeometry args={[0.022, 10, 10]} />
             <meshBasicMaterial color={color} transparent opacity={0.9} />
           </mesh>
         );
       })}
       <Stars radius={120} depth={60} count={6000} factor={3} saturation={0} fade speed={0.2} />
-      <OrbitControls enableZoom enablePan={false} minDistance={2.5} maxDistance={8} autoRotateSpeed={0} minPolarAngle={Math.PI * 0.1} maxPolarAngle={Math.PI * 0.9} />
+      <OrbitControls enableZoom enablePan={false} minDistance={2.3} maxDistance={8} autoRotateSpeed={0} minPolarAngle={Math.PI * 0.1} maxPolarAngle={Math.PI * 0.9} />
     </>
   );
 }
@@ -353,7 +353,7 @@ export default function PortalGlobe() {
           <Layers size={14} className="text-[#5b7c6f]" />
         </button>
 
-        <Canvas camera={{ position: [0, 0, 5.5], fov: 42 }} style={{ background: '#020508' }} gl={{ antialias: true }}>
+        <Canvas camera={{ position: [0, 0, 3.5], fov: 42 }} style={{ background: '#020508' }} gl={{ antialias: true }}>
           <GlobeScene posts={posts} stratumSites={stratumSites} onGlobeClick={handleGlobeClick} onMouseMove={handleMouseMove} onStratumSiteClick={(site) => { setSelectedStratumSite(site); setReadout(null); setIntel(null); }} />
         </Canvas>
 
