@@ -11,23 +11,14 @@ interface LayerConfig {
   id: string; label: string; group: string;
   active: boolean; opacity: number; source: string;
 }
-
 interface PointReadout {
   lat: number; lng: number;
   elevation?: number; ndvi?: number; magnetic?: number;
   gravity?: number; sarVV?: number; radon?: string;
   geology?: string; soil?: string;
 }
-
-interface PublicPost {
-  id: string; lat: number; lng: number;
-  title: string; category: string; image_url: string;
-}
-
-interface Project {
-  id: string; name: string; client?: string;
-}
-
+interface PublicPost { id: string; lat: number; lng: number; title: string; category: string; image_url: string; }
+interface Project { id: string; name: string; client?: string; }
 interface StratumSite {
   id: string; name: string; latitude: number; longitude: number;
   source: string; site_type?: string; ceto_score?: number;
@@ -51,7 +42,6 @@ const DEFAULT_LAYERS: LayerConfig[] = [
   { id: 'lidar',     label: 'LiDAR Bare Earth',   group: 'Archaeological',active: false, opacity: 0.75, source: 'OpenTopo / 3DEP' },
   { id: 'historic',  label: 'Historic Imagery',   group: 'Archaeological',active: false, opacity: 0.7,  source: 'USGS CORONA' },
 ];
-
 const GROUPS = ['Base', 'Environmental', 'Geophysical', 'Archaeological'];
 
 function vec3ToLatLng(v: THREE.Vector3): { lat: number; lng: number } {
@@ -59,6 +49,26 @@ function vec3ToLatLng(v: THREE.Vector3): { lat: number; lng: number } {
   const lat = 90 - (Math.acos(v.y / r) * 180) / Math.PI;
   const lng = ((Math.atan2(-v.z, -v.x) * 180) / Math.PI + 180 + 180) % 360 - 180;
   return { lat: Number(lat.toFixed(5)), lng: Number(lng.toFixed(5)) };
+}
+
+// Brighten a loaded image via canvas and return a new THREE.Texture
+function brightenTexture(img: HTMLImageElement, factor: number): THREE.Texture {
+  const canvas = document.createElement('canvas');
+  canvas.width  = img.naturalWidth  || img.width;
+  canvas.height = img.naturalHeight || img.height;
+  const ctx = canvas.getContext('2d')!;
+  ctx.drawImage(img, 0, 0);
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const data = imageData.data;
+  for (let i = 0; i < data.length; i += 4) {
+    data[i]   = Math.min(255, data[i]   * factor);
+    data[i+1] = Math.min(255, data[i+1] * factor);
+    data[i+2] = Math.min(255, data[i+2] * factor);
+  }
+  ctx.putImageData(imageData, 0, 0);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
 }
 
 function GlobeScene({ posts, stratumSites, onGlobeClick, onMouseMove, onStratumSiteClick }: {
@@ -75,21 +85,21 @@ function GlobeScene({ posts, stratumSites, onGlobeClick, onMouseMove, onStratumS
   const [texture, setTexture] = useState<THREE.Texture | null>(null);
 
   useEffect(() => {
-    const loader = new THREE.TextureLoader();
-    const sources = [
-      '/earth.jpg',
-    ];
-    let loaded = false;
-    const tryLoad = (idx: number) => {
-      if (idx >= sources.length) return;
-      loader.load(
-        sources[idx],
-        (t) => { if (!loaded) { loaded = true; t.colorSpace = THREE.SRGBColorSpace; setTexture(t); } },
-        undefined,
-        () => tryLoad(idx + 1)
-      );
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const tex = brightenTexture(img, 2.2); // boost brightness 2.2x
+      setTexture(tex);
     };
-    tryLoad(0);
+    img.onerror = () => {
+      // fallback: plain THREE.TextureLoader without brightening
+      const loader = new THREE.TextureLoader();
+      loader.load('/earth.jpg', (t) => {
+        t.colorSpace = THREE.SRGBColorSpace;
+        setTexture(t);
+      });
+    };
+    img.src = '/earth.jpg';
   }, []);
 
   useFrame(() => { if (globeRef.current) globeRef.current.rotation.y += 0.00003; });
@@ -124,15 +134,14 @@ function GlobeScene({ posts, stratumSites, onGlobeClick, onMouseMove, onStratumS
   return (
     <>
       <ambientLight intensity={1.0} />
-      <directionalLight position={[5, 3, 5]} intensity={1.2} color="#ffffff" />
+      <directionalLight position={[5, 3, 5]} intensity={0.8} color="#fff8ee" />
 
       <mesh ref={globeRef} onClick={handleClick} onPointerMove={handleMove}>
         <sphereGeometry args={[2, 128, 64]} />
-        {texture ? (
-          <meshBasicMaterial map={texture} />
-        ) : (
-          <meshBasicMaterial color={0x1a3d5c} />
-        )}
+        {texture
+          ? <meshBasicMaterial map={texture} />
+          : <meshBasicMaterial color={0x1a3d5c} />
+        }
       </mesh>
 
       {/* Atmosphere glow */}
@@ -140,7 +149,7 @@ function GlobeScene({ posts, stratumSites, onGlobeClick, onMouseMove, onStratumS
         <sphereGeometry args={[2.16, 64, 32]} />
         <shaderMaterial
           vertexShader={`varying vec3 vN; void main(){ vN=normalize(normalMatrix*normal); gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`}
-          fragmentShader={`varying vec3 vN; void main(){ float i=pow(0.7-dot(vN,vec3(0,0,1)),4.0); gl_FragColor=vec4(0.1,0.4,0.9,1.0)*i*0.6; }`}
+          fragmentShader={`varying vec3 vN; void main(){ float i=pow(0.7-dot(vN,vec3(0,0,1)),4.0); gl_FragColor=vec4(0.1,0.4,0.9,1.0)*i*0.5; }`}
           side={THREE.BackSide} blending={THREE.AdditiveBlending} transparent depthWrite={false}
         />
       </mesh>
@@ -211,15 +220,8 @@ export default function PortalGlobe() {
 
   const handleGlobeClick = useCallback(async (lat: number, lng: number) => {
     setReadout(buildReadout(lat, lng));
-    setFlagDone(false);
-    setShowProjectPicker(false);
-    setIntel(null);
-    setIntelLoading(true);
-    try {
-      const res = await fetch(`/api/intel?lat=${lat}&lng=${lng}`);
-      const data = await res.json();
-      setIntel(data);
-    } catch {}
+    setFlagDone(false); setShowProjectPicker(false); setIntel(null); setIntelLoading(true);
+    try { const res = await fetch(`/api/intel?lat=${lat}&lng=${lng}`); setIntel(await res.json()); } catch {}
     finally { setIntelLoading(false); }
   }, [buildReadout]);
 
@@ -228,8 +230,7 @@ export default function PortalGlobe() {
   const copyCoords = () => {
     if (!readout) return;
     navigator.clipboard.writeText(`${readout.lat}, ${readout.lng}`);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    setCopied(true); setTimeout(() => setCopied(false), 2000);
   };
 
   const narrateLocation = async () => {
@@ -355,17 +356,16 @@ export default function PortalGlobe() {
               {(readout.elevation !== undefined || readout.ndvi !== undefined || readout.magnetic !== undefined) && (
                 <div className="border-t border-[#1a2a1e] pt-2.5 space-y-2.5">
                   {readout.elevation !== undefined && <ReadoutRow label="ELEVATION" value={`${readout.elevation} m`} source="USGS 3DEP" />}
-                  {readout.ndvi      !== undefined && <ReadoutRow label="NDVI"      value={readout.ndvi.toString()} source="Sentinel-2" accent={readout.ndvi > 0.5 ? '#6b9c5f' : '#c09050'} />}
-                  {readout.magnetic  !== undefined && <ReadoutRow label="MAGNETIC"  value={`${readout.magnetic} nT`} source="EMAG2" />}
-                  {readout.gravity   !== undefined && <ReadoutRow label="GRAVITY"   value={`${readout.gravity} mGal`} source="BGI" />}
-                  {readout.sarVV     !== undefined && <ReadoutRow label="SAR VV"    value={`${readout.sarVV} dB`} source="Sentinel-1" />}
-                  {readout.radon     && <ReadoutRow label="RADON"   value={readout.radon} source="EPA" />}
-                  {readout.geology   && <ReadoutRow label="GEOLOGY" value={readout.geology} source="USGS" />}
-                  {readout.soil      && <ReadoutRow label="SOIL"    value={readout.soil} source="SSURGO" />}
+                  {readout.ndvi !== undefined && <ReadoutRow label="NDVI" value={readout.ndvi.toString()} source="Sentinel-2" accent={readout.ndvi > 0.5 ? '#6b9c5f' : '#c09050'} />}
+                  {readout.magnetic !== undefined && <ReadoutRow label="MAGNETIC" value={`${readout.magnetic} nT`} source="EMAG2" />}
+                  {readout.gravity !== undefined && <ReadoutRow label="GRAVITY" value={`${readout.gravity} mGal`} source="BGI" />}
+                  {readout.sarVV !== undefined && <ReadoutRow label="SAR VV" value={`${readout.sarVV} dB`} source="Sentinel-1" />}
+                  {readout.radon && <ReadoutRow label="RADON" value={readout.radon} source="EPA" />}
+                  {readout.geology && <ReadoutRow label="GEOLOGY" value={readout.geology} source="USGS" />}
+                  {readout.soil && <ReadoutRow label="SOIL" value={readout.soil} source="SSURGO" />}
                 </div>
               )}
             </div>
-
             {(intelLoading || intel) && (
               <div className="border-t border-[#1a2a1e] px-4 py-3 space-y-2">
                 <div className="flex items-center gap-2 mb-2">
@@ -438,7 +438,6 @@ export default function PortalGlobe() {
                 )}
               </div>
             )}
-
             <div className="border-t border-[#1a2a1e]">
               <a href={`/portal/viewer?lat=${readout?.lat}&lng=${readout?.lng}`} className="w-full flex items-center justify-center gap-2 py-2.5 bg-[#0d1410] hover:bg-[#111a14] transition-colors border-b border-[#1a2a1e]">
                 <span className="text-[#D4AF37] text-[9px] tracking-[0.2em] font-light">→ OPEN IN VIEWER</span>
@@ -453,7 +452,6 @@ export default function PortalGlobe() {
                 </div>
               )}
             </div>
-
             <div className="border-t border-[#1a2a1e] grid grid-cols-3 gap-px bg-[#1a2a1e]">
               <button onClick={flagAnomaly} disabled={flagging || flagDone} className="bg-[#0d1410] px-3 py-2.5 flex items-center justify-center gap-1.5 hover:bg-[#111a14] transition-colors disabled:opacity-50">
                 {flagDone ? <Check size={10} className="text-[#5b7c6f]" /> : flagging ? <AlertCircle size={10} className="text-[#5b7c6f] animate-pulse" /> : <Flag size={10} className="text-[#5b7c6f]" />}
@@ -468,7 +466,6 @@ export default function PortalGlobe() {
                 <span className="text-[#5b7c6f] text-[9px] tracking-[0.12em] font-light">{siteSaved ? 'SAVED' : savingSite ? 'SAVING...' : 'SAVE SITE'}</span>
               </button>
             </div>
-
             {showProjectPicker && (
               <div className="border-t border-[#1a2a1e]">
                 {projects.length === 0 ? (
