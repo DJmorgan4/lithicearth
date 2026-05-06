@@ -79,7 +79,7 @@ function GlobeScene({ posts, stratumSites, onGlobeClick, onMouseMove, onStratumS
     const sources = [
       'https://cdn.jsdelivr.net/npm/three-globe@2.31.0/example/img/earth-blue-marble.jpg',
       'https://unpkg.com/three-globe@2.31.0/example/img/earth-blue-marble.jpg',
-      'https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/planets/earth_atmos_2048.jpg',
+      '/earth.jpg',
     ];
     let loaded = false;
     const tryLoad = (idx: number) => {
@@ -125,30 +125,15 @@ function GlobeScene({ posts, stratumSites, onGlobeClick, onMouseMove, onStratumS
 
   return (
     <>
-      {/* Strong ambient so globe is fully visible from all angles */}
-      <ambientLight intensity={4.5} />
-      {/* Sun-side directional light for depth */}
-      <directionalLight position={[5, 3, 5]} intensity={1.5} color="#ffffff" />
-      <directionalLight position={[-5, -2, -3]} intensity={0.4} color="#3366cc" />
+      <ambientLight intensity={1.0} />
+      <directionalLight position={[5, 3, 5]} intensity={1.2} color="#ffffff" />
 
       <mesh ref={globeRef} onClick={handleClick} onPointerMove={handleMove}>
         <sphereGeometry args={[2, 128, 64]} />
         {texture ? (
-          <meshStandardMaterial
-            map={texture}
-            roughness={0.8}
-            metalness={0.05}
-            emissiveMap={texture}
-            emissive={new THREE.Color(0x333333)}
-            emissiveIntensity={1.2}
-          />
+          <meshBasicMaterial map={texture} />
         ) : (
-          <meshStandardMaterial
-            color={0x1a3d5c}
-            roughness={0.8}
-            emissive={new THREE.Color(0x112233)}
-            emissiveIntensity={0.5}
-          />
+          <meshBasicMaterial color={0x1a3d5c} />
         )}
       </mesh>
 
@@ -224,10 +209,7 @@ export default function PortalGlobe() {
   }, []);
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 3000); };
-
-  const buildReadout = useCallback((lat: number, lng: number): PointReadout => {
-    return { lat, lng };
-  }, []);
+  const buildReadout = useCallback((lat: number, lng: number): PointReadout => ({ lat, lng }), []);
 
   const handleGlobeClick = useCallback(async (lat: number, lng: number) => {
     setReadout(buildReadout(lat, lng));
@@ -239,11 +221,8 @@ export default function PortalGlobe() {
       const res = await fetch(`/api/intel?lat=${lat}&lng=${lng}`);
       const data = await res.json();
       setIntel(data);
-    } catch {
-      // engine offline
-    } finally {
-      setIntelLoading(false);
-    }
+    } catch {}
+    finally { setIntelLoading(false); }
   }, [buildReadout]);
 
   const handleMouseMove = useCallback((lat: number, lng: number) => { setCursorCoords({ lat, lng }); }, []);
@@ -257,14 +236,9 @@ export default function PortalGlobe() {
 
   const narrateLocation = async () => {
     if (!readout) return;
-    setNarrating(true);
-    setNarration(null);
+    setNarrating(true); setNarration(null);
     try {
-      const r = await fetch("/api/nexus/narrate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lat: readout.lat, lng: readout.lng, layers, readout })
-      });
+      const r = await fetch("/api/nexus/narrate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lat: readout.lat, lng: readout.lng, layers, readout }) });
       const j = await r.json();
       setNarration(j.narration || "No analysis available");
     } catch { setNarration("ASTRA unavailable"); }
@@ -276,12 +250,7 @@ export default function PortalGlobe() {
     setFlagging(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setFlagging(false); return; }
-    const { error } = await supabase.from('portal_observations').insert({
-      user_id: user.id, source: 'manual', type: 'anomaly',
-      lat: readout.lat, lng: readout.lng, flagged: true,
-      geometry: `POINT(${readout.lng} ${readout.lat})`,
-      properties: { elevation: readout.elevation, ndvi: readout.ndvi, magnetic: readout.magnetic, gravity: readout.gravity, sarVV: readout.sarVV, radon: readout.radon, geology: readout.geology, active_layers: layers.filter(l => l.active).map(l => l.id) },
-    });
+    const { error } = await supabase.from('portal_observations').insert({ user_id: user.id, source: 'manual', type: 'anomaly', lat: readout.lat, lng: readout.lng, flagged: true, geometry: `POINT(${readout.lng} ${readout.lat})`, properties: { elevation: readout.elevation, ndvi: readout.ndvi, magnetic: readout.magnetic, gravity: readout.gravity, sarVV: readout.sarVV, radon: readout.radon, geology: readout.geology, active_layers: layers.filter(l => l.active).map(l => l.id) } });
     setFlagging(false);
     if (!error) { setFlagDone(true); showToast('Anomaly flagged and saved'); }
     else { showToast('Error saving'); console.error(error); }
@@ -292,13 +261,8 @@ export default function PortalGlobe() {
     setSavingProject(projectId);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setSavingProject(null); return; }
-    const { error } = await supabase.from('portal_observations').insert({
-      user_id: user.id, project_id: projectId, source: 'manual', type: 'field_note',
-      lat: readout.lat, lng: readout.lng, flagged: false,
-      properties: { elevation: readout.elevation, ndvi: readout.ndvi, active_layers: layers.filter(l => l.active).map(l => l.id) },
-    });
-    setSavingProject(null);
-    setShowProjectPicker(false);
+    const { error } = await supabase.from('portal_observations').insert({ user_id: user.id, project_id: projectId, source: 'manual', type: 'field_note', lat: readout.lat, lng: readout.lng, flagged: false, properties: { elevation: readout.elevation, ndvi: readout.ndvi, active_layers: layers.filter(l => l.active).map(l => l.id) } });
+    setSavingProject(null); setShowProjectPicker(false);
     if (!error) showToast('Added to project');
     else { showToast('Error saving'); console.error(error); }
   };
@@ -306,11 +270,7 @@ export default function PortalGlobe() {
   const saveAsSite = async () => {
     if (!readout || savingSite) return;
     setSavingSiteState(true);
-    const { error } = await supabase.from('sites').insert({
-      lat: readout.lat, lng: readout.lng,
-      created_from: 'lithic', status: 'new',
-      name: `Site @ ${readout.lat}, ${readout.lng}`,
-    });
+    const { error } = await supabase.from('sites').insert({ lat: readout.lat, lng: readout.lng, created_from: 'lithic', status: 'new', name: `Site @ ${readout.lat}, ${readout.lng}` });
     setSavingSiteState(false);
     if (!error) { setSiteSaved(true); showToast('Site saved to pipeline'); setTimeout(() => setSiteSaved(false), 3000); }
     else { showToast('Error saving site'); console.error(error); }
@@ -387,12 +347,8 @@ export default function PortalGlobe() {
             <div className="flex items-center justify-between px-4 py-3 border-b border-[#1a2a1e]">
               <span className="text-[#5b7c6f] text-[9px] tracking-[0.25em] font-light">POINT READOUT</span>
               <div className="flex items-center gap-2">
-                <button onClick={copyCoords} className="text-[#3a4a3e] hover:text-[#5b7c6f] transition-colors">
-                  {copied ? <Check size={11} /> : <Copy size={11} />}
-                </button>
-                <button onClick={() => { setReadout(null); setIntel(null); setShowProjectPicker(false); }} className="text-[#3a4a3e] hover:text-[#c8c4ba] transition-colors">
-                  <X size={11} />
-                </button>
+                <button onClick={copyCoords} className="text-[#3a4a3e] hover:text-[#5b7c6f] transition-colors">{copied ? <Check size={11} /> : <Copy size={11} />}</button>
+                <button onClick={() => { setReadout(null); setIntel(null); setShowProjectPicker(false); }} className="text-[#3a4a3e] hover:text-[#c8c4ba] transition-colors"><X size={11} /></button>
               </div>
             </div>
             <div className="p-4 space-y-2.5">
@@ -429,9 +385,7 @@ export default function PortalGlobe() {
                     {(intel.measurements?.ndvi?.status === 'found' || intel.layers?.sentinel2?.status === 'found') && (
                       <div className="flex items-center justify-between">
                         <span className="text-[#3a4a3e] text-[9px] tracking-[0.2em]">SENTINEL-2</span>
-                        <span className="text-[#5b7c6f] text-[9px] font-light">
-                          {(intel.measurements?.sentinel2_meta?.cloud_cover ?? intel.layers?.sentinel2?.cloud_cover)?.toFixed(1)}% cloud · {(intel.measurements?.sentinel2_meta?.date ?? intel.layers?.sentinel2?.date)?.slice(0,10)}
-                        </span>
+                        <span className="text-[#5b7c6f] text-[9px] font-light">{(intel.measurements?.sentinel2_meta?.cloud_cover ?? intel.layers?.sentinel2?.cloud_cover)?.toFixed(1)}% cloud · {(intel.measurements?.sentinel2_meta?.date ?? intel.layers?.sentinel2?.date)?.slice(0,10)}</span>
                       </div>
                     )}
                     {(intel.measurements?.ndvi?.value != null || intel.layers?.sentinel2?.ndvi_approx != null) && (() => {
@@ -459,9 +413,7 @@ export default function PortalGlobe() {
                     {(intel.measurements?.sar?.status === 'found' || intel.layers?.sentinel1_sar?.status === 'found') && (
                       <div className="flex items-center justify-between">
                         <span className="text-[#3a4a3e] text-[9px] tracking-[0.2em]">SAR</span>
-                        <span className="text-[#5b7c6f] text-[9px] font-light">
-                          {intel.measurements?.sar?.orbit ?? intel.layers?.sentinel1_sar?.orbit} · {(intel.measurements?.sar?.acquired ?? intel.layers?.sentinel1_sar?.date)?.slice(0,10)}
-                        </span>
+                        <span className="text-[#5b7c6f] text-[9px] font-light">{intel.measurements?.sar?.orbit ?? intel.layers?.sentinel1_sar?.orbit} · {(intel.measurements?.sar?.acquired ?? intel.layers?.sentinel1_sar?.date)?.slice(0,10)}</span>
                       </div>
                     )}
                     {(intel.measurements?.thermal?.status === 'found' || intel.layers?.landsat_thermal?.status === 'found') && (
@@ -478,9 +430,7 @@ export default function PortalGlobe() {
                     {intel.measurement_quality != null && (
                       <div className="flex items-center justify-between border-t border-[#1a2a1e] pt-2">
                         <span className="text-[#3a4a3e] text-[9px] tracking-[0.2em]">MEAS. QUALITY</span>
-                        <span className="text-[9px] font-light" style={{color: intel.measurement_quality >= 0.75 ? '#4ade80' : intel.measurement_quality >= 0.5 ? '#fbbf24' : '#f87171'}}>
-                          {Math.round(intel.measurement_quality * 100)}%
-                        </span>
+                        <span className="text-[9px] font-light" style={{color: intel.measurement_quality >= 0.75 ? '#4ade80' : intel.measurement_quality >= 0.5 ? '#fbbf24' : '#f87171'}}>{Math.round(intel.measurement_quality * 100)}%</span>
                       </div>
                     )}
                     {intel.insights?.map((ins: string, i: number) => (
