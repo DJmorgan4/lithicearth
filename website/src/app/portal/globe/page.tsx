@@ -78,8 +78,8 @@ function GlobeScene({ posts, stratumSites, onGlobeClick, onMouseMove, onStratumS
     const loader = new THREE.TextureLoader();
     // Try multiple sources — fallback chain
     const sources = [
+      'https://unpkg.com/three-globe@2.31.0/example/img/earth-blue-marble.jpg',
       '/earth.jpg',
-      'https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/planets/earth_atmos_2048.jpg',
     ];
     let loaded = false;
     const tryLoad = (idx: number) => {
@@ -125,7 +125,7 @@ function GlobeScene({ posts, stratumSites, onGlobeClick, onMouseMove, onStratumS
 
   return (
     <>
-      <ambientLight intensity={0.8} />
+      <ambientLight intensity={1.5} />
       <pointLight position={[8, 6, 8]} intensity={2.0} color="#ffffff" />
       <pointLight position={[-6, -4, -6]} intensity={0.15} color="#5b7c6f" />
       <mesh ref={globeRef} onClick={handleClick} onPointerMove={handleMove}>
