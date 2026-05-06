@@ -76,10 +76,10 @@ function GlobeScene({ posts, stratumSites, onGlobeClick, onMouseMove, onStratumS
 
   useEffect(() => {
     const loader = new THREE.TextureLoader();
-    // Try multiple sources — fallback chain
     const sources = [
-      'https://unpkg.com/three-globe@2.31.0/example/img/earth-blue-marble.jpg',
       '/earth.jpg',
+      'https://unpkg.com/three-globe@2.31.0/example/img/earth-blue-marble.jpg',
+      'https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/planets/earth_atmos_2048.jpg',
     ];
     let loaded = false;
     const tryLoad = (idx: number) => {
@@ -125,17 +125,34 @@ function GlobeScene({ posts, stratumSites, onGlobeClick, onMouseMove, onStratumS
 
   return (
     <>
-      <ambientLight intensity={1.5} />
-      <pointLight position={[8, 6, 8]} intensity={2.0} color="#ffffff" />
-      <pointLight position={[-6, -4, -6]} intensity={0.15} color="#5b7c6f" />
+      {/* Strong ambient so globe is fully visible from all angles */}
+      <ambientLight intensity={3.0} />
+      {/* Sun-side directional light for depth */}
+      <directionalLight position={[5, 3, 5]} intensity={1.5} color="#ffffff" />
+      <directionalLight position={[-5, -2, -3]} intensity={0.4} color="#3366cc" />
+
       <mesh ref={globeRef} onClick={handleClick} onPointerMove={handleMove}>
         <sphereGeometry args={[2, 128, 64]} />
         {texture ? (
-          <meshPhongMaterial map={texture} specular={new THREE.Color(0x334466)} shininess={14} />
+          <meshStandardMaterial
+            map={texture}
+            roughness={0.8}
+            metalness={0.05}
+            emissiveMap={texture}
+            emissive={new THREE.Color(0x333333)}
+            emissiveIntensity={0.4}
+          />
         ) : (
-          <meshPhongMaterial color={0x1a3d5c} specular={new THREE.Color(0x224466)} shininess={18} />
+          <meshStandardMaterial
+            color={0x1a3d5c}
+            roughness={0.8}
+            emissive={new THREE.Color(0x112233)}
+            emissiveIntensity={0.5}
+          />
         )}
       </mesh>
+
+      {/* Atmosphere glow */}
       <mesh>
         <sphereGeometry args={[2.16, 64, 32]} />
         <shaderMaterial
@@ -144,12 +161,16 @@ function GlobeScene({ posts, stratumSites, onGlobeClick, onMouseMove, onStratumS
           side={THREE.BackSide} blending={THREE.AdditiveBlending} transparent depthWrite={false}
         />
       </mesh>
+
+      {/* Post markers */}
       {markerPositions.map((pos, i) => (
         <mesh key={posts[i].id} position={pos}>
           <sphereGeometry args={[0.016, 8, 8]} />
-          <meshBasicMaterial color={0x5b7c6f} transparent opacity={0.7} />
+          <meshBasicMaterial color={0x5b7c6f} transparent opacity={0.8} />
         </mesh>
       ))}
+
+      {/* Stratum site markers */}
       {stratumSites.map(site => {
         const phi = (90 - site.latitude) * (Math.PI / 180);
         const theta = (site.longitude + 180) * (Math.PI / 180);
@@ -164,6 +185,7 @@ function GlobeScene({ posts, stratumSites, onGlobeClick, onMouseMove, onStratumS
           </mesh>
         );
       })}
+
       <Stars radius={120} depth={60} count={6000} factor={3} saturation={0} fade speed={0.2} />
       <OrbitControls enableZoom enablePan={false} minDistance={2.3} maxDistance={8} autoRotateSpeed={0} minPolarAngle={Math.PI * 0.1} maxPolarAngle={Math.PI * 0.9} />
     </>
@@ -204,7 +226,6 @@ export default function PortalGlobe() {
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 3000); };
 
   const buildReadout = useCallback((lat: number, lng: number): PointReadout => {
-    // No synthetic values — all data comes from Lithic Engine real pixel measurements
     return { lat, lng };
   }, []);
 
@@ -233,6 +254,7 @@ export default function PortalGlobe() {
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
   const narrateLocation = async () => {
     if (!readout) return;
     setNarrating(true);
@@ -248,7 +270,6 @@ export default function PortalGlobe() {
     } catch { setNarration("ASTRA unavailable"); }
     finally { setNarrating(false); }
   };
-
 
   const flagAnomaly = async () => {
     if (!readout || flagging) return;
@@ -286,10 +307,8 @@ export default function PortalGlobe() {
     if (!readout || savingSite) return;
     setSavingSiteState(true);
     const { error } = await supabase.from('sites').insert({
-      lat: readout.lat,
-      lng: readout.lng,
-      created_from: 'lithic',
-      status: 'new',
+      lat: readout.lat, lng: readout.lng,
+      created_from: 'lithic', status: 'new',
       name: `Site @ ${readout.lat}, ${readout.lng}`,
     });
     setSavingSiteState(false);
@@ -376,7 +395,6 @@ export default function PortalGlobe() {
                 </button>
               </div>
             </div>
-
             <div className="p-4 space-y-2.5">
               <ReadoutRow label="LAT" value={`${readout.lat}°`} />
               <ReadoutRow label="LNG" value={`${readout.lng}°`} />
@@ -403,16 +421,11 @@ export default function PortalGlobe() {
                 </div>
                 {intel && !intel.error && (
                   <>
-                    {intel.summary && (
-                      <p className="text-[#e8e4da] text-[10px] font-light leading-snug border-l-2 border-[#5b7c6f] pl-2 mb-2">{intel.summary}</p>
-                    )}
+                    {intel.summary && <p className="text-[#e8e4da] text-[10px] font-light leading-snug border-l-2 border-[#5b7c6f] pl-2 mb-2">{intel.summary}</p>}
                     <div className="flex items-center justify-between">
                       <span className="text-[#3a4a3e] text-[9px] tracking-[0.2em]">SCORE</span>
-                      <span className="text-[#c8c4ba] text-xs font-light">
-                        {intel.score}/8 · {intel.confidence != null ? Math.round(intel.confidence * 100) + '%' : 'pending'} confidence
-                      </span>
+                      <span className="text-[#c8c4ba] text-xs font-light">{intel.score}/8 · {intel.confidence != null ? Math.round(intel.confidence * 100) + '%' : 'pending'} confidence</span>
                     </div>
-                    {/* Support both old layers.* and new measurements.* response format */}
                     {(intel.measurements?.ndvi?.status === 'found' || intel.layers?.sentinel2?.status === 'found') && (
                       <div className="flex items-center justify-between">
                         <span className="text-[#3a4a3e] text-[9px] tracking-[0.2em]">SENTINEL-2</span>
@@ -422,8 +435,8 @@ export default function PortalGlobe() {
                       </div>
                     )}
                     {(intel.measurements?.ndvi?.value != null || intel.layers?.sentinel2?.ndvi_approx != null) && (() => {
-                      const ndvi = intel.measurements?.ndvi?.value ?? intel.layers?.sentinel2?.ndvi_approx
-                      const method = intel.measurements?.ndvi?.method
+                      const ndvi = intel.measurements?.ndvi?.value ?? intel.layers?.sentinel2?.ndvi_approx;
+                      const method = intel.measurements?.ndvi?.method;
                       return (
                         <div className="flex items-center justify-between">
                           <span className="text-[#3a4a3e] text-[9px] tracking-[0.2em]">NDVI</span>
@@ -432,7 +445,7 @@ export default function PortalGlobe() {
                             {method && <span className="block text-[#2a3a2e] text-[8px]">{method === 'pixel_sample_B08_B04' ? '10m pixel' : 'scene est.'}</span>}
                           </div>
                         </div>
-                      )
+                      );
                     })()}
                     {(intel.measurements?.elevation?.status === 'found' || intel.layers?.elevation?.status === 'found') && (
                       <div className="flex items-center justify-between">
@@ -479,10 +492,7 @@ export default function PortalGlobe() {
             )}
 
             <div className="border-t border-[#1a2a1e]">
-              <a
-                href={`/portal/viewer?lat=${readout?.lat}&lng=${readout?.lng}`}
-                className="w-full flex items-center justify-center gap-2 py-2.5 bg-[#0d1410] hover:bg-[#111a14] transition-colors border-b border-[#1a2a1e]"
-              >
+              <a href={`/portal/viewer?lat=${readout?.lat}&lng=${readout?.lng}`} className="w-full flex items-center justify-center gap-2 py-2.5 bg-[#0d1410] hover:bg-[#111a14] transition-colors border-b border-[#1a2a1e]">
                 <span className="text-[#D4AF37] text-[9px] tracking-[0.2em] font-light">→ OPEN IN VIEWER</span>
               </a>
               <button onClick={narrateLocation} disabled={narrating} className="w-full flex items-center justify-center gap-2 py-2.5 bg-[#0a1410] hover:bg-[#111a14] transition-colors border-b border-[#1a2a1e] disabled:opacity-50">
@@ -495,6 +505,7 @@ export default function PortalGlobe() {
                 </div>
               )}
             </div>
+
             <div className="border-t border-[#1a2a1e] grid grid-cols-3 gap-px bg-[#1a2a1e]">
               <button onClick={flagAnomaly} disabled={flagging || flagDone} className="bg-[#0d1410] px-3 py-2.5 flex items-center justify-center gap-1.5 hover:bg-[#111a14] transition-colors disabled:opacity-50">
                 {flagDone ? <Check size={10} className="text-[#5b7c6f]" /> : flagging ? <AlertCircle size={10} className="text-[#5b7c6f] animate-pulse" /> : <Flag size={10} className="text-[#5b7c6f]" />}
@@ -506,7 +517,7 @@ export default function PortalGlobe() {
               </button>
               <button onClick={saveAsSite} disabled={savingSite || siteSaved} className="bg-[#0d1410] px-3 py-2.5 flex items-center justify-center gap-1.5 hover:bg-[#111a14] transition-colors disabled:opacity-50">
                 {siteSaved ? <Check size={10} className="text-[#5b7c6f]" /> : <FolderPlus size={10} className="text-[#5b7c6f]" />}
-                <span className="text-[#5b7c6f] text-[9px] tracking-[0.12em] font-light">{siteSaved ? 'SAVED' : savingSite ? 'SAVING...': 'SAVE SITE'}</span>
+                <span className="text-[#5b7c6f] text-[9px] tracking-[0.12em] font-light">{siteSaved ? 'SAVED' : savingSite ? 'SAVING...' : 'SAVE SITE'}</span>
               </button>
             </div>
 
