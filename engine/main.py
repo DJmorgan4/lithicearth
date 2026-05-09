@@ -1593,6 +1593,14 @@ async def scan_aoi_v2(lat: float, lng: float, radius_m: float = 500.0):
         except Exception:
             spectral = {}
 
+    # ── 6a. Fetch SAR scene metadata ─────────────────────────────────────
+    sar = {}
+    if context.get("sar_valid", True):
+        try:
+            sar = await _fetch_sar_aoi(lat, lng, radius_m)
+        except Exception:
+            sar = {"valid": False}
+
     # ── 6b. Muon flux baseline ───────────────────────────────────────────
     muon = {}
     try:
@@ -1633,6 +1641,7 @@ async def scan_aoi_v2(lat: float, lng: float, radius_m: float = 500.0):
         },
         "candidates": candidates,
         "spectral": spectral,
+        "sar": sar,
         "muon_baseline": muon,
         "note": f"{len(candidates)} candidate(s) detected via {dem_method}" + (" + S2_NDVI" if spectral.get("valid") else "")
     }
