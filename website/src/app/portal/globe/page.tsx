@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { Canvas, useFrame, useThree, useLoader } from '@react-three/fiber';
 import { OrbitControls, Stars } from '@react-three/drei';
 import { createClient } from '@/lib/supabase/client';
 import * as THREE from 'three';
@@ -82,25 +82,7 @@ function GlobeScene({ posts, stratumSites, onGlobeClick, onMouseMove, onStratumS
   const { camera, gl } = useThree();
   const raycaster = useRef(new THREE.Raycaster());
   const mouse = useRef(new THREE.Vector2());
-  const [texture, setTexture] = useState<THREE.Texture | null>(null);
-
-  useEffect(() => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      const tex = brightenTexture(img, 2.2); // boost brightness 2.2x
-      setTexture(tex);
-    };
-    img.onerror = () => {
-      // fallback: plain THREE.TextureLoader without brightening
-      const loader = new THREE.TextureLoader();
-      loader.load('/earth.jpg', (t) => {
-        t.colorSpace = THREE.SRGBColorSpace;
-        setTexture(t);
-      });
-    };
-    img.src = '/earth.jpg';
-  }, []);
+  const texture = useLoader(THREE.TextureLoader, '/earth.jpg');
 
   useFrame(() => { if (globeRef.current) globeRef.current.rotation.y += 0.00003; });
 
@@ -179,7 +161,7 @@ function GlobeScene({ posts, stratumSites, onGlobeClick, onMouseMove, onStratumS
       })}
 
       <Stars radius={120} depth={60} count={6000} factor={3} saturation={0} fade speed={0.2} />
-      <OrbitControls enableZoom enablePan={false} minDistance={2.3} maxDistance={8} autoRotateSpeed={0} minPolarAngle={Math.PI * 0.1} maxPolarAngle={Math.PI * 0.9} />
+      <OrbitControls enableZoom enablePan={false} minDistance={2.05} maxDistance={20} zoomSpeed={0.8} autoRotateSpeed={0} minPolarAngle={Math.PI * 0.1} maxPolarAngle={Math.PI * 0.9} />
     </>
   );
 }
@@ -210,7 +192,7 @@ export default function PortalGlobe() {
   const supabase = createClient();
 
   useEffect(() => {
-    supabase.from('posts').select('id, lat, lng, title, category, image_url').not('lat', 'is', null).limit(200).then(({ data }) => { if (data) setPosts(data); });
+    // posts table not yet created — stratum_sites is the live data source
     supabase.from('stratum_sites').select(`id, name, latitude, longitude, source, site_type, ceto_score, ceto_tier, esa_phase, status, tags, stratum_sensor_readings(sensor_type, value, unit, created_at), stratum_observations(observation_type, notes, created_at), stratum_documents(doc_type, title, url)`).eq('status', 'active').then(({ data }) => { if (data) setStratumSites(data as StratumSite[]); });
     supabase.from('portal_projects').select('id, name, client').order('created_at', { ascending: false }).then(({ data }) => { if (data) setProjects(data); });
   }, []);
@@ -331,7 +313,7 @@ export default function PortalGlobe() {
           <Layers size={14} className="text-[#5b7c6f]" />
         </button>
 
-        <Canvas camera={{ position: [0, 0, 3.5], fov: 42 }} style={{ background: '#020508' }} gl={{ antialias: true }}>
+        <Canvas camera={{ position: [-1.5, 0.8, 3.0], fov: 42 }} style={{ background: '#020508' }} gl={{ antialias: true }}>
           <GlobeScene posts={posts} stratumSites={stratumSites} onGlobeClick={handleGlobeClick} onMouseMove={handleMouseMove} onStratumSiteClick={(site) => { setSelectedStratumSite(site); setReadout(null); setIntel(null); }} />
         </Canvas>
 
