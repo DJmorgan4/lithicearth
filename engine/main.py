@@ -1088,38 +1088,30 @@ async def _fetch_ndvi_aoi(lat: float, lng: float, radius_m: float) -> dict:
 
 async def _fetch_sar_aoi(lat: float, lng: float, radius_m: float) -> dict:
     """
-    Fetch Sentinel-1 SAR scene metadata for AOI.
-    Returns {"platform": str, "orbit": str, "valid": bool} — backscatter pixel TBD.
+    Fetch Sentinel-1 SAR scene metadata via NASA CMR.
+    Returns {"platform": str, "date": str, "title": str, "valid": bool}
     """
     try:
-        import httpx, math
-        pad = radius_m * 1.2
-        lat_pad = pad / 111320.0
-        lng_pad = pad / (111320.0 * math.cos(math.radians(lat)))
-        bbox = [
-            round(lng - lng_pad, 5), round(lat - lat_pad, 5),
-            round(lng + lng_pad, 5), round(lat + lat_pad, 5)
-        ]
-        async with httpx.AsyncClient(timeout=10) as c:
-            r = await c.post(
-                "https://earth-search.aws.element84.com/v1/search",
-                json={
-                    "collections": ["sentinel-1-grd"],
-                    "bbox": bbox,
-                    "limit": 1,
-                    "sortby": [{"field": "datetime", "direction": "desc"}]
+        import httpx
+        async with httpx.AsyncClient(timeout=12) as c:
+            r = await c.get(
+                "https://cmr.earthdata.nasa.gov/search/granules.json",
+                params={
+                    "short_name": "SENTINEL-1A_SLC",
+                    "point": f"{lng},{lat}",
+                    "sort_key": "-start_date",
+                    "page_size": 1,
                 }
             )
-            items = r.json().get("features", [])
-        if not items:
+            entries = r.json().get("feed", {}).get("entry", [])
+        if not entries:
             return {"valid": False}
-        item = items[0]
-        props = item.get("properties", {})
+        e = entries[0]
         return {
             "valid": True,
-            "platform": props.get("platform", "sentinel-1"),
-            "orbit": props.get("sat:orbit_state", "unknown"),
-            "date": props.get("datetime", "")[:10]
+            "platform": "sentinel-1a",
+            "date": e.get("time_start", "")[:10],
+            "title": e.get("title", ""),
         }
     except Exception:
         return {"valid": False}
