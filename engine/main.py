@@ -1637,3 +1637,32 @@ async def scan_aoi_v2(lat: float, lng: float, radius_m: float = 500.0):
         "muon_baseline": muon,
         "note": f"{len(candidates)} candidate(s) detected via {dem_method}" + (" + S2_NDVI" if spectral.get("valid") else "")
     }
+
+
+# ── Copernicus Data Space token proxy ────────────────────────────────────
+import os as _os
+
+@app.get("/cdse/token")
+async def cdse_token():
+    """Exchange client credentials for a short-lived CDSE access token."""
+    client_id = _os.getenv("CDSE_CLIENT_ID")
+    client_secret = _os.getenv("CDSE_CLIENT_SECRET")
+    if not client_id or not client_secret:
+        return {"error": "CDSE credentials not configured"}
+    try:
+        async with httpx.AsyncClient(timeout=10) as c:
+            r = await c.post(
+                "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token",
+                data={
+                    "grant_type": "client_credentials",
+                    "client_id": client_id,
+                    "client_secret": client_secret,
+                }
+            )
+            data = r.json()
+            return {
+                "access_token": data.get("access_token"),
+                "expires_in": data.get("expires_in", 600),
+            }
+    except Exception as e:
+        return {"error": str(e)}

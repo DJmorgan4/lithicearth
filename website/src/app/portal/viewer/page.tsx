@@ -35,6 +35,7 @@ interface LayerDef {
   active: boolean
   source: string
   available: boolean
+  cdseAuth?: boolean
 }
 interface IntelData {
   location: { lat: number; lng: number }
@@ -212,6 +213,71 @@ const LAYER_DEFS: LayerDef[] = [
     active: false,
     source: 'USGS 3DEP 1m LiDAR',
     available: true,
+  },
+  {
+    id: 'cdse_ndvi',
+    label: 'NDVI (Live S2)',
+    group: 'Spectral',
+    color: '#86efac',
+    wmsUrl: 'https://sh.dataspace.copernicus.eu/ogc/wms/19beb6e6-941f-4716-aa8e-52f78bb315c1',
+    wmsLayer: 'NDVI',
+    opacity: 0.75,
+    active: false,
+    source: 'Copernicus S2 L2A',
+    available: true,
+    cdseAuth: true,
+  },
+  {
+    id: 'cdse_false_color',
+    label: 'False Color (Vegetation)',
+    group: 'Spectral',
+    color: '#4ade80',
+    wmsUrl: 'https://sh.dataspace.copernicus.eu/ogc/wms/19beb6e6-941f-4716-aa8e-52f78bb315c1',
+    wmsLayer: 'FALSE_COLOR',
+    opacity: 0.75,
+    active: false,
+    source: 'Copernicus S2 L2A',
+    available: true,
+    cdseAuth: true,
+  },
+  {
+    id: 'cdse_moisture',
+    label: 'Moisture Index',
+    group: 'Spectral',
+    color: '#38bdf8',
+    wmsUrl: 'https://sh.dataspace.copernicus.eu/ogc/wms/19beb6e6-941f-4716-aa8e-52f78bb315c1',
+    wmsLayer: 'MOISTURE_INDEX',
+    opacity: 0.75,
+    active: false,
+    source: 'Copernicus S2 L2A',
+    available: true,
+    cdseAuth: true,
+  },
+  {
+    id: 'cdse_swir',
+    label: 'SWIR',
+    group: 'Spectral',
+    color: '#f97316',
+    wmsUrl: 'https://sh.dataspace.copernicus.eu/ogc/wms/19beb6e6-941f-4716-aa8e-52f78bb315c1',
+    wmsLayer: 'SWIR',
+    opacity: 0.75,
+    active: false,
+    source: 'Copernicus S2 L2A',
+    available: true,
+    cdseAuth: true,
+  },
+  {
+    id: 'cdse_geology',
+    label: 'Geology (S2)',
+    group: 'Geophysical',
+    color: '#a78bfa',
+    wmsUrl: 'https://sh.dataspace.copernicus.eu/ogc/wms/19beb6e6-941f-4716-aa8e-52f78bb315c1',
+    wmsLayer: 'GEOLOGY',
+    opacity: 0.75,
+    active: false,
+    source: 'Copernicus S2 L2A',
+    available: true,
+    cdseAuth: true,
   },
   {
     id: 'sar',
@@ -430,14 +496,25 @@ function ViewerInner() {
           tl.addTo(map)
           layerRefs.current[id] = tl
         } else if (l.wmsUrl && l.wmsLayer) {
-          const wl = L.tileLayer.wms(l.wmsUrl, {
-            layers: l.wmsLayer,
-            format: 'image/png',
-            transparent: true,
-            opacity: l.opacity,
-          })
-          wl.addTo(map)
-          layerRefs.current[id] = wl
+          if (l.cdseAuth) {
+            // Authenticated CDSE WMS — proxy through /api/cdse/tiles
+            const baseWms = `${l.wmsUrl}?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&LAYERS=${encodeURIComponent(l.wmsLayer)}&FORMAT=image/png&TRANSPARENT=true&CRS=EPSG:3857&WIDTH=256&HEIGHT=256`
+            const tl = L.tileLayer(
+              `/api/cdse/tiles?url=${encodeURIComponent(baseWms + '&BBOX={bbox-epsg-3857}')}`,
+              { maxZoom: 19, opacity: l.opacity, tileSize: 256 }
+            )
+            tl.addTo(map)
+            layerRefs.current[id] = tl
+          } else {
+            const wl = L.tileLayer.wms(l.wmsUrl, {
+              layers: l.wmsLayer,
+              format: 'image/png',
+              transparent: true,
+              opacity: l.opacity,
+            })
+            wl.addTo(map)
+            layerRefs.current[id] = wl
+          }
         }
       }
       return { ...l, active: newActive }
