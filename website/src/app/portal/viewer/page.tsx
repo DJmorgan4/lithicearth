@@ -172,7 +172,7 @@ const LAYER_DEFS: LayerDef[] = [
     label: 'USGS Topo',
     group: 'Base',
     color: '#fbbf24',
-    tileUrl: 'https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}',
+    tileUrl: 'https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}', // maxZoom 16
     opacity: 0.7,
     active: false,
     source: 'USGS National Map',
@@ -425,7 +425,8 @@ function ViewerInner() {
         delete layerRefs.current[id]
       } else {
         if (l.tileUrl) {
-          const tl = L.tileLayer(l.tileUrl, { maxZoom: 19, opacity: l.opacity })
+          const tileMaxZoom = l.id === 'topo' ? 16 : 19
+          const tl = L.tileLayer(l.tileUrl, { maxZoom: tileMaxZoom, opacity: l.opacity })
           tl.addTo(map)
           layerRefs.current[id] = tl
         } else if (l.wmsUrl && l.wmsLayer) {
@@ -510,9 +511,9 @@ function ViewerInner() {
                         </button>
                         <div className="flex-1 min-w-0">
                           <p className={`text-[10px] truncate transition-colors ${!layer.available ? 'text-[#2a3a2e]' : layer.active ? 'text-[#c8c4ba]' : 'text-[#3a4a3e]'}`}>
-                            {layer.label}
+                            {layer.label}{!layer.available ? ' ↗' : ''}
                           </p>
-                          <p className="text-[#2a3a2e] text-[8px]">{layer.source}</p>
+                          <p className="text-[#2a3a2e] text-[8px]">{!layer.available ? 'point readout only — click map to read' : layer.source}</p>
                         </div>
                       </div>
                       {layer.active && (
