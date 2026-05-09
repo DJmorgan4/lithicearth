@@ -1030,10 +1030,10 @@ function ViewerInner() {
             {intelLoading ? 'SCANNING...' : '↻ REFRESH INTEL'}
           </button>
           <button
-            onClick={() => router.push(`/portal/reports/new?lat=${coords.lat}&lng=${coords.lng}`)}
+            onClick={() => router.push(`/portal/reports/new?lat=${coords.lat}&lng=${coords.lng}&location=${encodeURIComponent(coords.lat.toFixed(5) + ', ' + coords.lng.toFixed(5) + ' — LithicEarth scan')}`)}
             className="w-full py-2 border border-[#D4AF37]/20 hover:border-[#D4AF37]/50 text-[#D4AF37] text-[9px] tracking-[0.2em] transition-colors"
           >
-            → OPEN IN CETO
+            → GENERATE REPORT
           </button>
         </div>
       </div>
