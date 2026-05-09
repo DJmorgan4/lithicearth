@@ -62,3 +62,9 @@ canvas {
 .animate-fade-up   { animation: fadeUp    0.8s ease-out forwards; }
 .animate-fade-in   { animation: fadeIn    1s   ease-out forwards; }
 .animate-slow-pulse { animation: slowPulse 3s   ease-in-out infinite; }
+
+/* CDSE satellite overlay blend */
+.cdse-overlay {
+  mix-blend-mode: screen;
+  filter: contrast(1.4) brightness(1.2);
+}

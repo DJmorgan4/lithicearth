@@ -273,7 +273,7 @@ const LAYER_DEFS: LayerDef[] = [
     color: '#4ade80',
     wmsUrl: 'https://sh.dataspace.copernicus.eu/ogc/wms/38df2b92-62bd-4b7d-a4db-94f011c7b386',
     wmsLayer: 'IW_VV_DB',
-    opacity: 0.75,
+    opacity: 0.9,
     active: false,
     source: 'Copernicus S1 GRD',
     available: true,
@@ -286,7 +286,7 @@ const LAYER_DEFS: LayerDef[] = [
     color: '#86efac',
     wmsUrl: 'https://sh.dataspace.copernicus.eu/ogc/wms/38df2b92-62bd-4b7d-a4db-94f011c7b386',
     wmsLayer: 'IW-VH-DB',
-    opacity: 0.75,
+    opacity: 0.9,
     active: false,
     source: 'Copernicus S1 GRD',
     available: true,
@@ -299,7 +299,7 @@ const LAYER_DEFS: LayerDef[] = [
     color: '#4ade80',
     wmsUrl: 'https://sh.dataspace.copernicus.eu/ogc/wms/38df2b92-62bd-4b7d-a4db-94f011c7b386',
     wmsLayer: 'IW_VV_DB',
-    opacity: 0.75,
+    opacity: 0.9,
     active: false,
     source: 'Copernicus S1 IW',
     available: true,
@@ -312,7 +312,7 @@ const LAYER_DEFS: LayerDef[] = [
     color: '#86efac',
     wmsUrl: 'https://sh.dataspace.copernicus.eu/ogc/wms/38df2b92-62bd-4b7d-a4db-94f011c7b386',
     wmsLayer: 'IW-VH-DB',
-    opacity: 0.75,
+    opacity: 0.9,
     active: false,
     source: 'Copernicus S1 IW',
     available: true,
@@ -566,7 +566,7 @@ function ViewerInner() {
             const baseWms = `${l.wmsUrl}?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&LAYERS=${encodeURIComponent(l.wmsLayer)}&FORMAT=image/png&TRANSPARENT=true&CRS=EPSG:3857&WIDTH=256&HEIGHT=256`
             const tl = L.tileLayer(
               `/api/cdse/tiles?url=${encodeURIComponent(baseWms + '&BBOX={bbox-epsg-3857}')}`,
-              { maxZoom: 19, opacity: l.opacity, tileSize: 256 }
+              { maxZoom: 19, opacity: l.opacity ?? 0.85, tileSize: 256, className: 'cdse-overlay' }
             )
             tl.addTo(map)
             layerRefs.current[id] = tl
