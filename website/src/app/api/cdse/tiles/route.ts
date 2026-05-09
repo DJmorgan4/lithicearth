@@ -1,13 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-// Cache token in memory for its lifetime
 let cachedToken: { token: string; expiresAt: number } | null = null
 
 async function getToken(): Promise<string> {
   if (cachedToken && Date.now() < cachedToken.expiresAt - 30000) {
     return cachedToken.token
   }
-  const res = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/cdse/token`)
+  const clientId = process.env.CDSE_CLIENT_ID!
+  const clientSecret = process.env.CDSE_CLIENT_SECRET!
+  const res = await fetch(
+    'https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'client_credentials',
+        client_id: clientId,
+        client_secret: clientSecret,
+      }),
+    }
+  )
   const data = await res.json()
   cachedToken = {
     token: data.access_token,
