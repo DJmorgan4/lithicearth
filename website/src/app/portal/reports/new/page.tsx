@@ -53,6 +53,7 @@ function NewReportInner() {
   const [location, setLocation] = useState(locationParam)
   const [generating, setGenerating] = useState(false)
   const [reportData, setReportData] = useState<any>(null)
+  const [mapImage, setMapImage] = useState<string>('')
   const [error, setError] = useState('')
   const [phase, setPhase] = useState('')
 
@@ -76,6 +77,7 @@ function NewReportInner() {
       const data = await res.json()
       if (data.error) throw new Error(data.error)
       setReportData(data)
+      if (data.map_image) setMapImage(data.map_image)
     } catch (e: any) {
       setError(e.message || 'Generation failed')
     } finally {
@@ -100,6 +102,7 @@ function NewReportInner() {
           generated_at: reportData.generated_at,
           scan: reportData.scan,
           astra_interpretation: reportData.astra_interpretation,
+          map_image: mapImage || undefined,
         }),
       })
       if (!res.ok) throw new Error(await res.text())

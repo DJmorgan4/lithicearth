@@ -99,12 +99,37 @@ Close with an MSIGI SYNTHESIS — what the full multi-sensor picture indicates a
       })
     } catch (e) { console.error('ASTRA learning failed:', e) }
 
+    // Fetch Mapbox static satellite map with candidate markers
+    let mapImageBase64 = ''
+    try {
+      const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || ''
+      if (MAPBOX_TOKEN && lat && lng) {
+        // Build marker overlays for top candidates
+        const candidates = scanData?.candidates?.slice(0,5) || []
+        const markers = candidates.map((c: any, i: number) =>
+          `pin-s-${String.fromCharCode(65+i)}+2F5D8C(${c.lng},${c.lat})`
+        ).join(',')
+        const overlay = markers ? `${markers},` : ''
+        const zoom = 14
+        const size = '800x500'
+        const mapUrl = `https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/static/${overlay}${lng},${lat},${zoom},0/${size}@2x?access_token=${MAPBOX_TOKEN}`
+        const mapRes = await fetch(mapUrl, { signal: AbortSignal.timeout(10000) })
+        if (mapRes.ok) {
+          const buf = await mapRes.arrayBuffer()
+          mapImageBase64 = `data:image/png;base64,${Buffer.from(buf).toString('base64')}`
+        }
+      }
+    } catch (e) {
+      console.error('Static map fetch failed:', e)
+    }
+
     return NextResponse.json({
       scan: scanData,
       astra_interpretation: astraInterpretation,
       layers_analyzed: activeLayers,
       location: { lat, lng, address: location },
       generated_at: new Date().toISOString(),
+      map_image: mapImageBase64,
     })
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 })

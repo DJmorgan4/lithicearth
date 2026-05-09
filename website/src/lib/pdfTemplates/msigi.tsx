@@ -79,10 +79,11 @@ export interface MsigiPDFProps {
     candidates?: { id:string; score:number; dem_score:number; ndvi_score:number; sar_score:number; lat:number; lng:number }[]
   }
   astra_interpretation: string
+  map_image?: string
 }
 
 export function MsigiPDF(props: MsigiPDFProps) {
-  const { lat, lng, location, reportType, activeLayers, notes, generated_at, scan, astra_interpretation } = props
+  const { lat, lng, location, reportType, activeLayers, notes, generated_at, scan, astra_interpretation, map_image } = props
   const today = new Date(generated_at).toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' })
   const reportId = `LE-MSIGI-${new Date(generated_at).getFullYear()}-${Date.now().toString().slice(-6)}`
   const t = scan?.terrain
@@ -205,11 +206,31 @@ export function MsigiPDF(props: MsigiPDFProps) {
         <Footer id={reportId} />
       </Page>
 
+      {/* SATELLITE MAP */}
+      {map_image && (
+        <Page size="LETTER" style={styles.page}>
+          <Header title={location} date={today} />
+          <View style={styles.body}>
+            <Text style={styles.secHead}>Section 3 — Satellite Intelligence Map</Text>
+            <Text style={[styles.muted, { marginBottom:10 }]}>
+              Mapbox satellite imagery with MSIGI anomaly candidate markers. Top candidates plotted A–E by composite score.
+              Coordinates: {lat.toFixed(5)}°N, {Math.abs(lng).toFixed(5)}°W · Zoom 14 · Source: Mapbox Satellite Streets v12
+            </Text>
+            <Image src={map_image} style={{ width:'100%', height:280, borderRadius:4, marginBottom:8 }} />
+            <Text style={styles.muted}>
+              Markers indicate DBSCAN anomaly candidates. Score composite: DEM×0.60 + NDVI×0.25 + SAR×0.15.
+              Field verification required before drawing conclusions.
+            </Text>
+          </View>
+          <Footer id={reportId} />
+        </Page>
+      )}
+
       {/* ASTRA INTERPRETATION */}
       <Page size="LETTER" style={styles.page}>
         <Header title={location} date={today} />
         <View style={styles.body}>
-          <Text style={styles.secHead}>Section 3 — ASTRA Core Layer Interpretation</Text>
+          <Text style={styles.secHead}>Section 4 — ASTRA Core Layer Interpretation</Text>
           <Text style={[styles.muted, { marginBottom:12 }]}>
             ASTRA CORE intelligence layer analysis — 20-domain knowledge system · LOCUS reasoning · STRATUM indexed
           </Text>
@@ -226,7 +247,7 @@ export function MsigiPDF(props: MsigiPDFProps) {
       <Page size="LETTER" style={styles.page}>
         <Header title={location} date={today} />
         <View style={styles.body}>
-          <Text style={styles.secHead}>Section 4 — Analyst Notes & Methodology</Text>
+          <Text style={styles.secHead}>Section 5 — Analyst Notes & Methodology</Text>
           {notes && (
             <>
               <Text style={styles.h3}>Analyst Notes</Text>
