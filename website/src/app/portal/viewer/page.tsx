@@ -202,6 +202,18 @@ const LAYER_DEFS: LayerDef[] = [
     available: true,
   },
   {
+    id: 'lidar_1m',
+    label: 'LiDAR 1m (High Res)',
+    group: 'Geophysical',
+    color: '#f97316',
+    wmsUrl: 'https://elevation.nationalmap.gov/arcgis/services/3DEPElevation/ImageServer/WMSServer',
+    wmsLayer: '3DEPElevation:Hillshade Multidirectional',
+    opacity: 0.7,
+    active: false,
+    source: 'USGS 3DEP 1m LiDAR',
+    available: true,
+  },
+  {
     id: 'sar',
     label: 'SAR / Radar',
     group: 'Radar',
