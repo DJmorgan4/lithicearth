@@ -75,7 +75,7 @@ export interface MsigiPDFProps {
     terrain?: { mean_elevation_m:number; std_elevation_m:number; elevated_point_count:number; source:string }
     spectral?: { ndvi_mean:number; cloud_cover:number; date:string }
     sar?: { platform:string; date:string; valid:boolean }
-    muon_baseline?: { flux_per_m2_min:number; kp_index:number }
+    muon_baseline?: { flux_m2_min:number; kp_index:number }
     candidates?: { id:string; score:number; dem_score:number; ndvi_score:number; sar_score:number; lat:number; lng:number }[]
   }
   astra_interpretation: string
@@ -117,7 +117,7 @@ export function MsigiPDF(props: MsigiPDFProps) {
                 {t && <Text style={styles.coverMeta}>Elevation: {t.mean_elevation_m}m mean ±{t.std_elevation_m}m</Text>}
                 {s && <Text style={styles.coverMeta}>NDVI: {s.ndvi_mean} · Cloud: {s.cloud_cover}%</Text>}
                 {sar && <Text style={styles.coverMeta}>SAR: {sar.platform} · {sar.date}</Text>}
-                {mu && <Text style={styles.coverMeta}>Muon: {mu.flux_per_m2_min}/m²/min · Kp {mu.kp_index}</Text>}
+                {mu && <Text style={styles.coverMeta}>Muon: {mu.flux_m2_min}/m²/min · Kp {mu.kp_index}</Text>}
                 <Text style={styles.coverMeta}>Candidates: {candidates.length} detected</Text>
               </View>
             </View>
@@ -160,7 +160,7 @@ export function MsigiPDF(props: MsigiPDFProps) {
             { label:'SAR Platform', value: sar?.platform || 'N/A' },
             { label:'SAR Date', value: sar?.date || 'N/A' },
             { label:'SAR Valid', value: sar?.valid ? 'Yes' : 'No' },
-            { label:'Muon Flux', value: mu ? `${mu.flux_per_m2_min}/m²/min` : 'N/A' },
+            { label:'Muon Flux', value: mu ? `${mu.flux_m2_min}/m²/min` : 'N/A' },
             { label:'Kp Index', value: mu ? String(mu.kp_index) : 'N/A' },
           ].map((r,i) => (
             <View key={i} style={styles.row}>

@@ -234,7 +234,7 @@ function NewReportInner() {
             <div className="grid grid-cols-2 gap-3 text-[10px] font-light">
               <div><span className="text-[#3a4a3e]">SAR PLATFORM</span><p className="text-[#e8e4da] mt-1">{reportData.scan?.sar?.platform ?? '—'}</p></div>
               <div><span className="text-[#3a4a3e]">SAR DATE</span><p className="text-[#e8e4da] mt-1">{reportData.scan?.sar?.date ?? '—'}</p></div>
-              <div><span className="text-[#3a4a3e]">MUON FLUX</span><p className="text-[#e8e4da] mt-1">{reportData.scan?.muon_baseline?.flux_per_m2_min}/m²/min</p></div>
+              <div><span className="text-[#3a4a3e]">MUON FLUX</span><p className="text-[#e8e4da] mt-1">{reportData.scan?.muon_baseline?.flux_m2_min}/m²/min</p></div>
               <div><span className="text-[#3a4a3e]">Kp INDEX</span><p className="text-[#e8e4da] mt-1">{reportData.scan?.muon_baseline?.kp_index}</p></div>
             </div>
           </Section>

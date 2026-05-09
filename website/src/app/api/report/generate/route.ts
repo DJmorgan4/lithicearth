@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
 TERRAIN: mean ${t.mean_elevation_m}m | std ±${t.std_elevation_m}m | ${t.elevated_point_count} elevated pts | source: ${t.source}
 SPECTRAL: NDVI ${s?.ndvi_mean ?? 'N/A'} | cloud ${s?.cloud_cover ?? 'N/A'}% | date ${s?.date ?? 'N/A'}
 SAR: ${sar?.platform ?? 'N/A'} | ${sar?.date ?? 'N/A'} | valid: ${sar?.valid ?? false}
-MUON: ${mu?.flux_per_m2_min ?? 'N/A'}/m²/min | Kp ${mu?.kp_index ?? 'N/A'}
+MUON: ${mu?.flux_m2_min ?? 'N/A'}/m²/min | Kp ${mu?.kp_index ?? 'N/A'}
 CANDIDATES: ${scanData.candidates?.length ?? 0} detected
 ${scanData.candidates?.slice(0,3).map((c: any) => `  ${c.id}: score ${c.score} (DEM:${c.dem_score} NDVI:${c.ndvi_score} SAR:${c.sar_score})`).join('\n') ?? ''}` : 'Scan unavailable'
 
@@ -82,7 +82,7 @@ Close with an MSIGI SYNTHESIS — what the full multi-sensor picture indicates a
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: msg, history: [] }),
-        signal: AbortSignal.timeout(35000)
+        signal: AbortSignal.timeout(55000)
       })
       const ad = await ar.json()
       astraInterpretation = ad.response || ad.error || 'ASTRA unavailable'
