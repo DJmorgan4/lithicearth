@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
   const engineUrl = process.env.GEO_API_URL || 'http://127.0.0.1:8000'
 
   try {
-    const res = await fetch(`${engineUrl}/analyze?lat=${lat}&lng=${lng}`, { signal: AbortSignal.timeout(15000) })
+    const res = await fetch(`${engineUrl}/analyze?lat=${lat}&lng=${lng}`, { signal: AbortSignal.timeout(20000) })
     const data = await res.json()
     return NextResponse.json(data)
   } catch {

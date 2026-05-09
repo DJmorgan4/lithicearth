@@ -587,7 +587,7 @@ function ViewerInner() {
                 <div>
                   <p className="text-[#f87171] text-[9px] tracking-widest mb-1">ENGINE OFFLINE</p>
                   <p className="text-[#3a4a3e] text-[8px] leading-relaxed">
-                    Start the Lithic Engine locally on port 8000 to enable real data.
+                    Lithic Engine timed out. Railway may be cold-starting — try Refresh Intel.
                   </p>
                 </div>
               </div>
