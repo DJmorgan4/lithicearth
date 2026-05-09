@@ -84,58 +84,35 @@ function NewReportInner() {
     }
   }
 
-  const handleDownloadPDF = () => {
+  const handleDownloadPDF = async () => {
     if (!reportData) return
-    const content = `LITHICEARTH MSIGI FIELD INTELLIGENCE REPORT
-Generated: ${new Date(reportData.generated_at).toLocaleString()}
-Site: ${reportData.location.address || `${reportData.location.lat}, ${reportData.location.lng}`}
-Report Type: ${reportType.toUpperCase()}
-Layers Analyzed: ${reportData.layers_analyzed?.join(', ')}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-TERRAIN SCAN
-Anomalies: ${reportData.scan?.candidates?.length ?? 0} detected
-Mean Elevation: ${reportData.scan?.terrain?.mean_elevation_m}m
-Std: ±${reportData.scan?.terrain?.std_elevation_m}m
-Elevated Points: ${reportData.scan?.terrain?.elevated_point_count}
-DEM Source: ${reportData.scan?.terrain?.source}
-
-SPECTRAL
-NDVI Mean: ${reportData.scan?.spectral?.ndvi_mean}
-Cloud Cover: ${reportData.scan?.spectral?.cloud_cover}%
-Date: ${reportData.scan?.spectral?.date}
-
-SAR
-Platform: ${reportData.scan?.sar?.platform}
-Date: ${reportData.scan?.sar?.date}
-
-MUON BASELINE
-Flux: ${reportData.scan?.muon_baseline?.flux_per_m2_min}/m²/min
-Kp Index: ${reportData.scan?.muon_baseline?.kp_index}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-ASTRA CORE LAYER INTERPRETATION
-
-${reportData.astra_interpretation}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-ANALYST NOTES
-${notes || 'None'}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-LithicEarth · MSIGI Methodology · The Blue Duck LLC
-DJ Morgan EP-TX · cetointeractive.com`
-
-    const blob = new Blob([content], { type: 'text/plain' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `LithicEarth_MSIGI_${lat}_${lng}_${new Date().toISOString().slice(0,10)}.txt`
-    a.click()
-    URL.revokeObjectURL(url)
+    try {
+      const res = await fetch('/api/report/export-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lat,
+          lng,
+          location: location || `${lat}, ${lng}`,
+          reportType,
+          activeLayers: selectedLayers,
+          notes,
+          generated_at: reportData.generated_at,
+          scan: reportData.scan,
+          astra_interpretation: reportData.astra_interpretation,
+        }),
+      })
+      if (!res.ok) throw new Error(await res.text())
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `LithicEarth_MSIGI_${lat}_${lng}_${new Date().toISOString().slice(0,10)}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      alert('PDF export failed: ' + String(e))
+    }
   }
 
   return (
