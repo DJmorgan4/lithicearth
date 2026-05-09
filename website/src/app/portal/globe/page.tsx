@@ -46,9 +46,9 @@ const GROUPS = ['Base', 'Environmental', 'Geophysical', 'Archaeological'];
 
 function vec3ToLatLng(v: THREE.Vector3): { lat: number; lng: number } {
   const r = v.length();
-  const lat = 90 - (Math.acos(v.y / r) * 180) / Math.PI;
-  const lng = ((Math.atan2(-v.z, -v.x) * 180) / Math.PI + 180 + 180) % 360 - 180;
-  return { lat: Number(lat.toFixed(5)), lng: Number(lng.toFixed(5)) };
+  const lat = 90 - (Math.acos(Math.max(-1, Math.min(1, v.y / r))) * 180) / Math.PI;
+  const lng = ((Math.atan2(v.z, v.x) * 180) / Math.PI + 360) % 360 - 180;
+  return { lat: Number((lat - 90).toFixed(5) === '-90' ? -90 : lat - 90 > 90 ? 90 : lat - 90), lng: Number(lng.toFixed(5)) };
 }
 
 // Brighten a loaded image via canvas and return a new THREE.Texture
@@ -84,7 +84,7 @@ function GlobeScene({ posts, stratumSites, onGlobeClick, onMouseMove, onStratumS
   const mouse = useRef(new THREE.Vector2());
   const texture = useLoader(THREE.TextureLoader, '/earth.jpg');
 
-  useFrame(() => { if (globeRef.current) globeRef.current.rotation.y += 0.00003; });
+  // No auto-rotation — keeps markers aligned with texture
 
   const getLatLng = useCallback((e: MouseEvent | React.MouseEvent) => {
     if (!globeRef.current) return null;
@@ -108,9 +108,9 @@ function GlobeScene({ posts, stratumSites, onGlobeClick, onMouseMove, onStratumS
 
   const markerPositions = posts.slice(0, 100).map(post => {
     const phi = (90 - post.lat) * (Math.PI / 180);
-    const theta = (post.lng + 180) * (Math.PI / 180);
+    const theta = post.lng * (Math.PI / 180);
     const r = 2.03;
-    return new THREE.Vector3(-r * Math.sin(phi) * Math.cos(theta), r * Math.cos(phi), -r * Math.sin(phi) * Math.sin(theta));
+    return new THREE.Vector3(r * Math.sin(phi) * Math.cos(theta), r * Math.cos(phi), r * Math.sin(phi) * Math.sin(theta));
   });
 
   return (
@@ -118,7 +118,7 @@ function GlobeScene({ posts, stratumSites, onGlobeClick, onMouseMove, onStratumS
       <ambientLight intensity={1.0} />
       <directionalLight position={[5, 3, 5]} intensity={0.8} color="#fff8ee" />
 
-      <mesh ref={globeRef} onClick={handleClick} onPointerMove={handleMove}>
+      <mesh ref={globeRef} onClick={handleClick} onPointerMove={handleMove} rotation={[0, Math.PI * 1.08, 0]}>
         <sphereGeometry args={[2, 128, 64]} />
         {texture
           ? <meshBasicMaterial map={texture} />
@@ -147,9 +147,9 @@ function GlobeScene({ posts, stratumSites, onGlobeClick, onMouseMove, onStratumS
       {/* Stratum site markers */}
       {stratumSites.map(site => {
         const phi = (90 - site.latitude) * (Math.PI / 180);
-        const theta = (site.longitude + 180) * (Math.PI / 180);
+        const theta = site.longitude * (Math.PI / 180);
         const r = 2.04;
-        const pos = new THREE.Vector3(-r * Math.sin(phi) * Math.cos(theta), r * Math.cos(phi), -r * Math.sin(phi) * Math.sin(theta));
+        const pos = new THREE.Vector3(r * Math.sin(phi) * Math.cos(theta), r * Math.cos(phi), r * Math.sin(phi) * Math.sin(theta));
         const score = site.ceto_score ?? 50;
         const color = score < 40 ? '#5b9c6f' : score < 70 ? '#D4AF37' : '#c0503a';
         return (
