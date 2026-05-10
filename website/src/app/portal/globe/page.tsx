@@ -358,6 +358,7 @@ export default function PortalGlobe() {
   const [astraLoading, setAstraLoading] = useState(false);
   const [astraDiscovery, setAstraDiscovery] = useState<AstraDiscovery | null>(null);
   const [selectedAstraCandidate, setSelectedAstraCandidate] = useState<AstraCandidate | null>(null);
+  const [expeditionMode, setExpeditionMode] = useState(false);
 
   const supabase = createClient();
 
@@ -437,6 +438,33 @@ export default function PortalGlobe() {
       active: layer.active || mapped.includes(layer.id),
     })));
   };
+
+
+  const generateExpeditionBrief = (candidate: AstraCandidate) => {
+    const terrainFocus =
+      candidate.layers.includes('terrain') || candidate.layers.includes('topo')
+        ? 'Terrain relief, slope transitions, and elevation visibility should be inspected.'
+        : 'Terrain review recommended during viewer analysis.'
+
+    const hydroFocus =
+      candidate.layers.includes('hydro') || candidate.layers.includes('wetlands')
+        ? 'Hydrology and wetland structure are likely central to this target.'
+        : 'Water proximity should still be verified.'
+
+    const lidarFocus =
+      candidate.layers.includes('lidar')
+        ? 'LiDAR review recommended for microtopography and hidden terrain structure.'
+        : 'Satellite and terrain overlays are primary review modes.'
+
+    return [
+      `ASTRA confidence score ${candidate.score}%`,
+      terrainFocus,
+      hydroFocus,
+      lidarFocus,
+      'Validate public/private access before field operations.',
+      'Use Viewer mode for terrain profiles, AOIs, spectral overlays, and scan analytics.',
+    ]
+  }
 
   const runAstraDiscovery = async () => {
     if (!astraQuery.trim() || astraLoading) return;
@@ -739,6 +767,62 @@ export default function PortalGlobe() {
                   <p key={i} className="text-[#3a4a3e] text-[9px] leading-relaxed">• {b}</p>
                 ))}
               </div>
+              <button
+                onClick={() => setExpeditionMode(v => !v)}
+                className={`w-full py-2 border text-[9px] tracking-[0.2em] transition-colors ${
+                  expeditionMode
+                    ? 'border-[#12A8AC] text-[#12A8AC]'
+                    : 'border-[#1a2a1e] text-[#5b7c6f] hover:border-[#12A8AC]/50'
+                }`}
+              >
+                {expeditionMode ? 'HIDE FIELD BRIEF' : 'GENERATE FIELD BRIEF'}
+              </button>
+
+
+              {expeditionMode && (
+                <div className="border border-[#12A8AC]/20 bg-[#061012] p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[#12A8AC] text-[8px] tracking-[0.22em]">
+                      ASTRA FIELD BRIEF
+                    </span>
+
+                    <span className="text-[#3a4a3e] text-[7px]">
+                      LIVE RECON SYNTHESIS
+                    </span>
+                  </div>
+
+                  <div className="space-y-2">
+                    {generateExpeditionBrief(selectedAstraCandidate).map((item, i) => (
+                      <div
+                        key={i}
+                        className="border-l border-[#12A8AC]/20 pl-2"
+                      >
+                        <p className="text-[#8ea39a] text-[9px] leading-relaxed">
+                          {item}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="border-t border-[#1a2a1e] pt-2">
+                    <p className="text-[#3a4a3e] text-[8px] tracking-[0.15em] mb-1">
+                      RECOMMENDED ANALYSIS LAYERS
+                    </p>
+
+                    <div className="flex flex-wrap gap-1">
+                      {selectedAstraCandidate.layers.map(layer => (
+                        <span
+                          key={layer}
+                          className="px-2 py-1 border border-[#1a2a1e] text-[#12A8AC] text-[7px]"
+                        >
+                          {layer.toUpperCase()}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <a
                 href={`/portal/viewer?lat=${selectedAstraCandidate.lat}&lng=${selectedAstraCandidate.lng}&zoom=13`}
                 className="block text-center border border-[#D4AF37]/30 text-[#D4AF37] text-[9px] tracking-[0.2em] py-2 hover:border-[#D4AF37]"
