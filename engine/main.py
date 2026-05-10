@@ -1666,3 +1666,105 @@ async def cdse_token():
             }
     except Exception as e:
         return {"error": str(e)}
+
+
+# ── /maps — generate base64 PNG map images for report ────────────────────────
+@app.get("/maps")
+async def generate_maps(lat: float, lng: float, radius_m: float = 1000):
+    import numpy as np
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import matplotlib.colors as mcolors
+    import io, base64, httpx
+
+    lat, lng = normalize_coords(lat, lng)
+    deg = radius_m / 111320
+    minx, miny, maxx, maxy = lng-deg, lat-deg, lng+deg, lat+deg
+
+    def fig_to_b64(fig):
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", dpi=150, bbox_inches="tight", facecolor="#080808")
+        buf.seek(0)
+        b64 = base64.b64encode(buf.read()).decode()
+        plt.close(fig)
+        return b64
+
+    results = {}
+
+    # ── Terrain / DEM ──
+    try:
+        wcs_url = (
+            "https://prd-tnm.s3.amazonaws.com/index.html?"
+            f"prefix=StagedProducts/Elevation/1/TIFF/"
+        )
+        dem_url = (
+            f"https://elevation.nationalmap.gov/arcgis/services/3DEPElevation/ImageServer/WCSServer"
+            f"?SERVICE=WCS&VERSION=1.0.0&REQUEST=GetCoverage"
+            f"&COVERAGE=DEP3Meters&BBOX={minx},{miny},{maxx},{maxy}"
+            f"&CRS=EPSG:4326&FORMAT=GeoTIFF&WIDTH=256&HEIGHT=256"
+        )
+        async with httpx.AsyncClient(timeout=20) as client:
+            r = await client.get(dem_url)
+        if r.status_code == 200:
+            import rasterio, tempfile, os
+            with tempfile.NamedTemporaryFile(suffix=".tif", delete=False) as f:
+                f.write(r.content); tpath = f.name
+            with rasterio.open(tpath) as src:
+                dem = src.read(1).astype(float)
+                dem[dem == src.nodata] = np.nan
+            os.unlink(tpath)
+            vmin = float(np.nanpercentile(dem, 2))
+            vmax = float(np.nanpercentile(dem, 98))
+            fig, ax = plt.subplots(figsize=(6,6), facecolor="#080808")
+            ax.set_facecolor("#080808")
+            ax.imshow(dem, cmap="gist_earth", vmin=vmin, vmax=vmax, interpolation="bilinear")
+            ax.set_title("Terrain — USGS 3DEP LiDAR", color="white", fontsize=9, pad=8)
+            ax.axis("off")
+            sm = plt.cm.ScalarMappable(cmap="gist_earth", norm=mcolors.Normalize(vmin=vmin, vmax=vmax))
+            cb = fig.colorbar(sm, ax=ax, fraction=0.03, pad=0.02)
+            cb.ax.yaxis.set_tick_params(color="white"); plt.setp(cb.ax.yaxis.get_ticklabels(), color="white")
+            cb.set_label("Elevation (m)", color="white", fontsize=7)
+            results["terrain"] = fig_to_b64(fig)
+    except Exception as e:
+        results["terrain"] = None
+        results["terrain_error"] = str(e)
+
+    # ── NDVI heatmap from candidate grid scores ──
+    try:
+        scan_url = f"http://localhost:{8080}/scan?lat={lat}&lng={lng}&radius_m={radius_m}"
+        async with httpx.AsyncClient(timeout=30) as client:
+            sr = await client.get(f"http://127.0.0.1:8080/scan?lat={lat}&lng={lng}")
+        scan_data = sr.json()
+        candidates = scan_data.get("candidates", [])
+        spectral = scan_data.get("spectral", {})
+        ndvi_mean = spectral.get("ndvi_mean", 0)
+
+        lats = [c["lat"] for c in candidates]
+        lngs = [c["lng"] for c in candidates]
+        scores = [c.get("ndvi_signal", 0.5) for c in candidates]
+
+        fig, ax = plt.subplots(figsize=(6,6), facecolor="#080808")
+        ax.set_facecolor("#080808")
+        if lats and lngs:
+            sc = ax.scatter(lngs, lats, c=scores, cmap="RdYlGn", s=120,
+                           vmin=0, vmax=1, alpha=0.85, edgecolors="#333", linewidths=0.5)
+            cb = fig.colorbar(sc, ax=ax, fraction=0.03, pad=0.02)
+            cb.ax.yaxis.set_tick_params(color="white")
+            plt.setp(cb.ax.yaxis.get_ticklabels(), color="white")
+            cb.set_label("NDVI Signal", color="white", fontsize=7)
+            for c in candidates:
+                ax.annotate(c["id"], (c["lng"], c["lat"]),
+                           color="white", fontsize=7, ha="center", va="bottom",
+                           xytext=(0,6), textcoords="offset points")
+        ax.set_title(f"NDVI Signal Map — mean {ndvi_mean:.3f}", color="white", fontsize=9, pad=8)
+        ax.set_xlabel("Longitude", color="#555", fontsize=7)
+        ax.set_ylabel("Latitude", color="#555", fontsize=7)
+        ax.tick_params(colors="#555")
+        for spine in ax.spines.values(): spine.set_edgecolor("#333")
+        results["ndvi"] = fig_to_b64(fig)
+    except Exception as e:
+        results["ndvi"] = None
+        results["ndvi_error"] = str(e)
+
+    return results
