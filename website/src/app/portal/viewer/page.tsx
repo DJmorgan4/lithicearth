@@ -29,6 +29,11 @@ type AOIGeometry =
   | { type: 'Point'; coordinates: [number, number] }
   | { type: 'Polygon'; coordinates: [number, number][][] }
 
+type TerrainProfilePoint = {
+  distance: number
+  elevation: number
+}
+
 type SavedAOI = {
   id: string
   name: string
@@ -440,6 +445,7 @@ function ViewerInner() {
   const rectangleStartRef = useRef<{ lat: number; lng: number } | null>(null)
   const polygonPointsRef = useRef<[number, number][]>([])
   const geojsonImportRef = useRef<HTMLInputElement>(null)
+  const terrainStartRef = useRef<{ lat: number; lng: number } | null>(null)
 
   // Sanitize initial coords from URL params
   const rawLat = parseFloat(searchParams.get('lat') || '0')
@@ -468,6 +474,8 @@ function ViewerInner() {
   const [savedAOIs, setSavedAOIs] = useState<SavedAOI[]>([])
   const [aoiHistory, setAoiHistory] = useState<SavedAOI[]>([])
   const [shareCopied, setShareCopied] = useState(false)
+  const [terrainMode, setTerrainMode] = useState(false)
+  const [terrainProfile, setTerrainProfile] = useState<TerrainProfilePoint[]>([])
   const scanLayerRef = useRef<any>(null)
 
   const setAOIModeSafe = useCallback((mode: AOIMode) => {
@@ -674,6 +682,38 @@ function ViewerInner() {
     return clusters
   }, [])
 
+
+  const generateTerrainProfile = useCallback(async (
+    start: { lat: number; lng: number },
+    end: { lat: number; lng: number }
+  ) => {
+    const samples = 24
+    const points: TerrainProfilePoint[] = []
+
+    const baseElevation = elev?.value ?? 120
+
+    for (let i = 0; i <= samples; i++) {
+      const t = i / samples
+
+      const lat = start.lat + (end.lat - start.lat) * t
+      const lng = start.lng + (end.lng - start.lng) * t
+
+      // temporary synthetic terrain variation
+      const elevation =
+        baseElevation +
+        Math.sin(i / 2.8) * 8 +
+        Math.cos(i / 3.7) * 5 +
+        (Math.random() * 2 - 1)
+
+      points.push({
+        distance: Math.round(t * 1000),
+        elevation: Math.round(elevation * 10) / 10,
+      })
+    }
+
+    setTerrainProfile(points)
+  }, [elev?.value])
+
   // ── Fetch intel from engine ──────────────────────────────────────────
   const fetchIntel = useCallback(async (lat: number, lng: number) => {
     // Guard — never send invalid coords to engine
@@ -803,6 +843,34 @@ function ViewerInner() {
       map.on('click', async (e: any) => {
         const safe = sanitizeCoords(e.latlng.lat, e.latlng.lng)
         const mode = aoiModeRef.current
+
+        if (terrainMode) {
+          if (!terrainStartRef.current) {
+            terrainStartRef.current = safe
+            markerRef.current?.setLatLng([safe.lat, safe.lng])
+            return
+          }
+
+          const start = terrainStartRef.current
+          terrainStartRef.current = null
+
+          const L = (await import('leaflet')).default
+
+          L.polyline(
+            [
+              [start.lat, start.lng],
+              [safe.lat, safe.lng]
+            ],
+            {
+              color: '#fb923c',
+              weight: 2,
+              dashArray: '6 4'
+            }
+          ).addTo(map)
+
+          await generateTerrainProfile(start, safe)
+          return
+        }
 
         if (mode === 'pin') {
           await applyAOI({ type: 'Point', coordinates: [safe.lng, safe.lat] }, safe)
@@ -1392,6 +1460,17 @@ function ViewerInner() {
             {aoiMode === 'polygon' && 'Click vertices, double-click to finish polygon.'}
           </p>
 
+          <button
+            onClick={() => setTerrainMode(v => !v)}
+            className={`w-full py-2 border text-[8px] tracking-[0.15em] transition-colors ${
+              terrainMode
+                ? 'border-[#fb923c] text-[#fb923c]'
+                : 'border-[#1a2a1e] text-[#5b7c6f] hover:border-[#5b7c6f]'
+            }`}
+          >
+            {terrainMode ? 'TERRAIN PROFILE ACTIVE' : 'TERRAIN PROFILE'}
+          </button>
+
           <div className="grid grid-cols-2 gap-1">
             <button onClick={saveAOI} disabled={!aoiGeometry || aoiSaveStatus === 'saving'} className="py-2 border border-[#1a2a1e] hover:border-[#5b7c6f] text-[#5b7c6f] text-[8px] tracking-[0.15em] disabled:opacity-40">
               {aoiSaveStatus === 'saving' ? 'SAVING' : aoiSaveStatus === 'saved' ? 'SAVED' : aoiSaveStatus === 'error' ? 'FAILED' : 'SAVE'}
@@ -1438,6 +1517,83 @@ function ViewerInner() {
             </div>
           )}
         </div>
+
+
+        {terrainProfile.length > 0 && (
+          <div className="border-t border-[#1a2a1e] p-3">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[#fb923c] text-[8px] tracking-[0.25em]">
+                TERRAIN PROFILE
+              </p>
+              <p className="text-[#2a3a2e] text-[7px]">
+                {terrainProfile.length} samples
+              </p>
+            </div>
+
+            <svg
+              viewBox="0 0 240 80"
+              className="w-full h-24 border border-[#111a14] bg-[#09100b]"
+            >
+              <polyline
+                fill="none"
+                stroke="#fb923c"
+                strokeWidth="2"
+                points={
+                  terrainProfile.map((p, i) => {
+                    const x = (i / Math.max(terrainProfile.length - 1, 1)) * 240
+                    const minElev = Math.min(...terrainProfile.map(t => t.elevation))
+                    const maxElev = Math.max(...terrainProfile.map(t => t.elevation))
+                    const y =
+                      70 -
+                      ((p.elevation - minElev) /
+                        Math.max(maxElev - minElev, 1)) *
+                        60
+                    return `${x},${y}`
+                  }).join(' ')
+                }
+              />
+
+              {scan?.candidates?.slice(0, 5).map((c, i) => {
+                const x = ((i + 1) / 6) * 240
+                return (
+                  <circle
+                    key={c.id}
+                    cx={x}
+                    cy="40"
+                    r="3"
+                    fill="#ef4444"
+                  />
+                )
+              })}
+            </svg>
+
+            <div className="grid grid-cols-3 gap-1 mt-2">
+              <div className="border border-[#111a14] p-2">
+                <p className="text-[#2a3a2e] text-[6px]">MIN</p>
+                <p className="text-[#c8c4ba] text-[9px]">
+                  {Math.min(...terrainProfile.map(p => p.elevation)).toFixed(1)}m
+                </p>
+              </div>
+
+              <div className="border border-[#111a14] p-2">
+                <p className="text-[#2a3a2e] text-[6px]">MAX</p>
+                <p className="text-[#c8c4ba] text-[9px]">
+                  {Math.max(...terrainProfile.map(p => p.elevation)).toFixed(1)}m
+                </p>
+              </div>
+
+              <div className="border border-[#111a14] p-2">
+                <p className="text-[#2a3a2e] text-[6px]">RELIEF</p>
+                <p className="text-[#c8c4ba] text-[9px]">
+                  {(
+                    Math.max(...terrainProfile.map(p => p.elevation)) -
+                    Math.min(...terrainProfile.map(p => p.elevation))
+                  ).toFixed(1)}m
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Actions */}
         <div className="border-t border-[#1a2a1e] p-3 space-y-2">
