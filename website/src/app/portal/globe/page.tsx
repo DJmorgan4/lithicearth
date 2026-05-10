@@ -71,9 +71,10 @@ function brightenTexture(img: HTMLImageElement, factor: number): THREE.Texture {
   return tex;
 }
 
-function GlobeScene({ posts, stratumSites, onGlobeClick, onMouseMove, onStratumSiteClick }: {
+function GlobeScene({ posts, stratumSites, layers, onGlobeClick, onMouseMove, onStratumSiteClick }: {
   posts: PublicPost[];
   stratumSites: StratumSite[];
+  layers: LayerConfig[];
   onGlobeClick: (lat: number, lng: number) => void;
   onMouseMove: (lat: number, lng: number) => void;
   onStratumSiteClick: (site: StratumSite) => void;
@@ -83,6 +84,13 @@ function GlobeScene({ posts, stratumSites, onGlobeClick, onMouseMove, onStratumS
   const raycaster = useRef(new THREE.Raycaster());
   const mouse = useRef(new THREE.Vector2());
   const texture = useLoader(THREE.TextureLoader, '/earth.jpg');
+  const overlayRef = useRef<THREE.Group>(null);
+
+  const active = useCallback((id: string) => layers.some(l => l.id === id && l.active), [layers]);
+
+  useFrame((_, delta) => {
+    if (overlayRef.current) overlayRef.current.rotation.y += delta * 0.025;
+  });
 
   // No auto-rotation — keeps markers aligned with texture
 
@@ -159,6 +167,73 @@ function GlobeScene({ posts, stratumSites, onGlobeClick, onMouseMove, onStratumS
           </mesh>
         );
       })}
+
+      {/* Layer-reactive intelligence overlays */}
+      <group ref={overlayRef}>
+        {active('terrain') && (
+          <mesh>
+            <sphereGeometry args={[2.012, 128, 64]} />
+            <shaderMaterial
+              transparent
+              depthWrite={false}
+              blending={THREE.AdditiveBlending}
+              uniforms={{ uColor: { value: new THREE.Color('#fb923c') } }}
+              vertexShader={`
+                varying vec3 vPos;
+                void main() {
+                  vPos = position;
+                  vec3 displaced = position + normal * (sin(position.x * 18.0) * sin(position.y * 22.0) * 0.018);
+                  gl_Position = projectionMatrix * modelViewMatrix * vec4(displaced, 1.0);
+                }
+              `}
+              fragmentShader={`
+                uniform vec3 uColor;
+                varying vec3 vPos;
+                void main() {
+                  float bands = abs(sin(vPos.y * 42.0));
+                  float alpha = smoothstep(0.92, 1.0, bands) * 0.22;
+                  gl_FragColor = vec4(uColor, alpha);
+                }
+              `}
+            />
+          </mesh>
+        )}
+
+        {active('lidar') && (
+          <mesh>
+            <sphereGeometry args={[2.026, 96, 48]} />
+            <meshBasicMaterial color="#fcd34d" wireframe transparent opacity={0.18} />
+          </mesh>
+        )}
+
+        {active('ndvi') && (
+          <mesh>
+            <sphereGeometry args={[2.04, 96, 48]} />
+            <meshBasicMaterial color="#4ade80" transparent opacity={0.08} blending={THREE.AdditiveBlending} />
+          </mesh>
+        )}
+
+        {active('sar') && [0.15, 0.35, 0.55].map((offset, i) => (
+          <mesh key={`sar-ring-${i}`} rotation={[Math.PI / 2 + offset, 0, offset]}>
+            <torusGeometry args={[2.09, 0.0035, 8, 192]} />
+            <meshBasicMaterial color="#38bdf8" transparent opacity={0.25} blending={THREE.AdditiveBlending} />
+          </mesh>
+        ))}
+
+        {active('hydro') && [-0.8, -0.4, 0, 0.4, 0.8].map((y, i) => (
+          <mesh key={`hydro-band-${i}`} position={[0, y, 0]} rotation={[Math.PI / 2, 0, 0]}>
+            <torusGeometry args={[Math.sqrt(Math.max(0.01, 2.05 * 2.05 - y * y)), 0.0025, 8, 160]} />
+            <meshBasicMaterial color="#06b6d4" transparent opacity={0.22} blending={THREE.AdditiveBlending} />
+          </mesh>
+        ))}
+
+        {active('geology') && (
+          <mesh rotation={[0, Math.PI / 4, 0]}>
+            <sphereGeometry args={[2.055, 48, 24]} />
+            <meshBasicMaterial color="#a78bfa" wireframe transparent opacity={0.11} />
+          </mesh>
+        )}
+      </group>
 
       <Stars radius={120} depth={60} count={6000} factor={3} saturation={0} fade speed={0.2} />
       <OrbitControls enableZoom enablePan={false} minDistance={2.05} maxDistance={20} zoomSpeed={0.8} autoRotateSpeed={0} minPolarAngle={Math.PI * 0.1} maxPolarAngle={Math.PI * 0.9} />
@@ -314,7 +389,7 @@ export default function PortalGlobe() {
         </button>
 
         <Canvas camera={{ position: [-1.5, 0.8, 3.0], fov: 42 }} style={{ background: '#020508' }} gl={{ antialias: true }}>
-          <GlobeScene posts={posts} stratumSites={stratumSites} onGlobeClick={handleGlobeClick} onMouseMove={handleMouseMove} onStratumSiteClick={(site) => { setSelectedStratumSite(site); setReadout(null); setIntel(null); }} />
+          <GlobeScene posts={posts} stratumSites={stratumSites} layers={layers} onGlobeClick={handleGlobeClick} onMouseMove={handleMouseMove} onStratumSiteClick={(site) => { setSelectedStratumSite(site); setReadout(null); setIntel(null); }} />
         </Canvas>
 
         {cursorCoords && (
