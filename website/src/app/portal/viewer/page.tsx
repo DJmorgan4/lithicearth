@@ -689,31 +689,35 @@ function ViewerInner() {
     start: { lat: number; lng: number },
     end: { lat: number; lng: number }
   ) => {
-    const samples = 24
-    const points: TerrainProfilePoint[] = []
+    try {
+      const res = await fetch(
+        `/api/terrain/profile?startLat=${start.lat}&startLng=${start.lng}&endLat=${end.lat}&endLng=${end.lng}&samples=32`
+      )
 
-    const baseElevation = elev?.value ?? 120
+      if (!res.ok) throw new Error('terrain profile failed')
 
-    for (let i = 0; i <= samples; i++) {
-      const t = i / samples
+      const data = await res.json()
+      setTerrainProfile(data.profile)
+    } catch {
+      const samples = 24
+      const points: TerrainProfilePoint[] = []
+      const baseElevation = elev?.value ?? 120
 
-      const lat = start.lat + (end.lat - start.lat) * t
-      const lng = start.lng + (end.lng - start.lng) * t
+      for (let i = 0; i <= samples; i++) {
+        const t = i / samples
+        const elevation =
+          baseElevation +
+          Math.sin(i / 2.8) * 8 +
+          Math.cos(i / 3.7) * 5
 
-      // temporary synthetic terrain variation
-      const elevation =
-        baseElevation +
-        Math.sin(i / 2.8) * 8 +
-        Math.cos(i / 3.7) * 5 +
-        (Math.random() * 2 - 1)
+        points.push({
+          distance: Math.round(t * 1000),
+          elevation: Math.round(elevation * 10) / 10,
+        })
+      }
 
-      points.push({
-        distance: Math.round(t * 1000),
-        elevation: Math.round(elevation * 10) / 10,
-      })
+      setTerrainProfile(points)
     }
-
-    setTerrainProfile(points)
   }, [elev?.value])
 
   // ── Fetch intel from engine ──────────────────────────────────────────
