@@ -38,6 +38,7 @@ interface AstraDiscovery {
   center: { lat: number; lng: number };
   recommended_layers: string[];
   synthesis: string;
+  source?: string;
   candidates: AstraCandidate[];
 }
 
@@ -571,6 +572,22 @@ export default function PortalGlobe() {
           </div>
           {astraDiscovery && (
             <div className="px-4 pb-3">
+              <div className="flex items-center gap-2 mb-2">
+                <span className={`px-2 py-1 text-[7px] tracking-[0.18em] border ${
+                  astraDiscovery.source === 'openstreetmap-overpass'
+                    ? 'border-[#12A8AC]/40 text-[#12A8AC]'
+                    : 'border-[#5b7c6f]/40 text-[#5b7c6f]'
+                }`}>
+                  {astraDiscovery.source === 'openstreetmap-overpass'
+                    ? 'LIVE OSM DISCOVERY'
+                    : 'ASTRA FALLBACK'}
+                </span>
+
+                <span className="px-2 py-1 text-[7px] tracking-[0.18em] border border-[#D4AF37]/30 text-[#D4AF37]">
+                  {astraDiscovery.intent.replaceAll('_', ' ').toUpperCase()}
+                </span>
+              </div>
+
               <p className="text-[#7a8a7d] text-[10px] leading-relaxed border-l border-[#D4AF37]/30 pl-3 mb-2">
                 {astraDiscovery.synthesis}
               </p>
@@ -587,6 +604,17 @@ export default function PortalGlobe() {
                   >
                     <p className="text-[#c8c4ba] text-[10px] truncate">{c.name}</p>
                     <p className="text-[#D4AF37] text-[8px] mt-1">{c.score}% · {c.type}</p>
+
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {c.layers.slice(0, 4).map(layer => (
+                        <span
+                          key={layer}
+                          className="px-1.5 py-0.5 border border-[#1a2a1e] text-[#12A8AC] text-[6px] tracking-[0.12em]"
+                        >
+                          {layer.toUpperCase()}
+                        </span>
+                      ))}
+                    </div>
                   </button>
                 ))}
               </div>
@@ -762,6 +790,29 @@ export default function PortalGlobe() {
               <ReadoutRow label="TYPE" value={selectedAstraCandidate.type} />
               <ReadoutRow label="SCORE" value={`${selectedAstraCandidate.score}%`} accent="#D4AF37" />
               <p className="text-[#7a8a7d] text-[10px] leading-relaxed border-l border-[#1a2a1e] pl-2">{selectedAstraCandidate.reason}</p>
+
+              <div className="border border-[#1a2a1e] bg-[#060b08] p-2 space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-[#3a4a3e] text-[7px] tracking-[0.16em]">
+                    ASTRA CONFIDENCE ANALYSIS
+                  </span>
+
+                  <span className="text-[#D4AF37] text-[8px]">
+                    {selectedAstraCandidate.score}%
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap gap-1">
+                  {selectedAstraCandidate.layers.map(layer => (
+                    <span
+                      key={layer}
+                      className="px-2 py-1 border border-[#1a2a1e] text-[#12A8AC] text-[6px]"
+                    >
+                      {layer.toUpperCase()} SIGNAL
+                    </span>
+                  ))}
+                </div>
+              </div>
               <div className="border-t border-[#1a2a1e] pt-2 space-y-1">
                 {selectedAstraCandidate.brief.map((b, i) => (
                   <p key={i} className="text-[#3a4a3e] text-[9px] leading-relaxed">• {b}</p>
