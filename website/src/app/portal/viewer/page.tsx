@@ -420,6 +420,71 @@ const GROUPS = ['Base', 'Environmental', 'Geophysical', 'Radar', 'Spectral', 'Th
 function ReadoutRow({ label, value, sub, accent }: {
   label: string; value: string; sub?: string; accent?: string
 }) {
+
+  useEffect(() => {
+    if (!webglOverlay || !scan?.candidates?.length) return
+
+    let raf = 0
+    const canvas = webglCanvasRef.current
+    const map = leafletRef.current
+    if (!canvas || !map) return
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const resize = () => {
+      const rect = canvas.parentElement?.getBoundingClientRect()
+      if (!rect) return
+      canvas.width = rect.width
+      canvas.height = rect.height
+    }
+
+    resize()
+
+    const draw = (time: number) => {
+      resize()
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+      scan.candidates.forEach((c) => {
+        const point = map.latLngToContainerPoint([c.lat, c.lng])
+        const pulse = 1 + Math.sin(time / 500 + c.score * 10) * 0.25
+        const radius = Math.max(20, c.diameter_m * 0.6) * pulse
+        const alpha = Math.min(0.35, Math.max(0.08, c.score * 0.35))
+
+        const gradient = ctx.createRadialGradient(
+          point.x,
+          point.y,
+          0,
+          point.x,
+          point.y,
+          radius
+        )
+
+        const color =
+          c.score > 0.7
+            ? '239,68,68'
+            : c.score > 0.4
+              ? '245,158,11'
+              : '91,124,111'
+
+        gradient.addColorStop(0, `rgba(${color},${alpha})`)
+        gradient.addColorStop(0.5, `rgba(${color},${alpha * 0.35})`)
+        gradient.addColorStop(1, `rgba(${color},0)`)
+
+        ctx.fillStyle = gradient
+        ctx.beginPath()
+        ctx.arc(point.x, point.y, radius, 0, Math.PI * 2)
+        ctx.fill()
+      })
+
+      raf = requestAnimationFrame(draw)
+    }
+
+    raf = requestAnimationFrame(draw)
+
+    return () => cancelAnimationFrame(raf)
+  }, [webglOverlay, scan])
+
   return (
     <div className="flex items-baseline justify-between gap-2 py-1.5 border-b border-[#1a2a1e] last:border-0">
       <span className="text-[#3a4a3e] text-[9px] tracking-[0.2em] font-light flex-shrink-0">{label}</span>
@@ -446,6 +511,7 @@ function ViewerInner() {
   const polygonPointsRef = useRef<[number, number][]>([])
   const geojsonImportRef = useRef<HTMLInputElement>(null)
   const terrainStartRef = useRef<{ lat: number; lng: number } | null>(null)
+  const webglCanvasRef = useRef<HTMLCanvasElement>(null)
 
   // Sanitize initial coords from URL params
   const rawLat = parseFloat(searchParams.get('lat') || '0')
@@ -478,6 +544,7 @@ function ViewerInner() {
   const [terrainProfile, setTerrainProfile] = useState<TerrainProfilePoint[]>([])
   const [timeSlider, setTimeSlider] = useState(50)
   const [temporalMode, setTemporalMode] = useState(false)
+  const [webglOverlay, setWebglOverlay] = useState(false)
   const scanLayerRef = useRef<any>(null)
 
   const setAOIModeSafe = useCallback((mode: AOIMode) => {
@@ -1051,6 +1118,71 @@ function ViewerInner() {
     loadSavedAOIs()
   }, [loadSavedAOIs])
 
+
+  useEffect(() => {
+    if (!webglOverlay || !scan?.candidates?.length) return
+
+    let raf = 0
+    const canvas = webglCanvasRef.current
+    const map = leafletRef.current
+    if (!canvas || !map) return
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const resize = () => {
+      const rect = canvas.parentElement?.getBoundingClientRect()
+      if (!rect) return
+      canvas.width = rect.width
+      canvas.height = rect.height
+    }
+
+    resize()
+
+    const draw = (time: number) => {
+      resize()
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+      scan.candidates.forEach((c) => {
+        const point = map.latLngToContainerPoint([c.lat, c.lng])
+        const pulse = 1 + Math.sin(time / 500 + c.score * 10) * 0.25
+        const radius = Math.max(20, c.diameter_m * 0.6) * pulse
+        const alpha = Math.min(0.35, Math.max(0.08, c.score * 0.35))
+
+        const gradient = ctx.createRadialGradient(
+          point.x,
+          point.y,
+          0,
+          point.x,
+          point.y,
+          radius
+        )
+
+        const color =
+          c.score > 0.7
+            ? '239,68,68'
+            : c.score > 0.4
+              ? '245,158,11'
+              : '91,124,111'
+
+        gradient.addColorStop(0, `rgba(${color},${alpha})`)
+        gradient.addColorStop(0.5, `rgba(${color},${alpha * 0.35})`)
+        gradient.addColorStop(1, `rgba(${color},0)`)
+
+        ctx.fillStyle = gradient
+        ctx.beginPath()
+        ctx.arc(point.x, point.y, radius, 0, Math.PI * 2)
+        ctx.fill()
+      })
+
+      raf = requestAnimationFrame(draw)
+    }
+
+    raf = requestAnimationFrame(draw)
+
+    return () => cancelAnimationFrame(raf)
+  }, [webglOverlay, scan])
+
   return (
     <div className="flex h-screen bg-[#0a0e0b] overflow-hidden font-light">
 
@@ -1069,7 +1201,72 @@ function ViewerInner() {
               const gl = layers.filter(l => l.group === group)
               if (!gl.length) return null
               const collapsed = collapsedGroups.has(group)
-              return (
+            
+  useEffect(() => {
+    if (!webglOverlay || !scan?.candidates?.length) return
+
+    let raf = 0
+    const canvas = webglCanvasRef.current
+    const map = leafletRef.current
+    if (!canvas || !map) return
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const resize = () => {
+      const rect = canvas.parentElement?.getBoundingClientRect()
+      if (!rect) return
+      canvas.width = rect.width
+      canvas.height = rect.height
+    }
+
+    resize()
+
+    const draw = (time: number) => {
+      resize()
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+      scan.candidates.forEach((c) => {
+        const point = map.latLngToContainerPoint([c.lat, c.lng])
+        const pulse = 1 + Math.sin(time / 500 + c.score * 10) * 0.25
+        const radius = Math.max(20, c.diameter_m * 0.6) * pulse
+        const alpha = Math.min(0.35, Math.max(0.08, c.score * 0.35))
+
+        const gradient = ctx.createRadialGradient(
+          point.x,
+          point.y,
+          0,
+          point.x,
+          point.y,
+          radius
+        )
+
+        const color =
+          c.score > 0.7
+            ? '239,68,68'
+            : c.score > 0.4
+              ? '245,158,11'
+              : '91,124,111'
+
+        gradient.addColorStop(0, `rgba(${color},${alpha})`)
+        gradient.addColorStop(0.5, `rgba(${color},${alpha * 0.35})`)
+        gradient.addColorStop(1, `rgba(${color},0)`)
+
+        ctx.fillStyle = gradient
+        ctx.beginPath()
+        ctx.arc(point.x, point.y, radius, 0, Math.PI * 2)
+        ctx.fill()
+      })
+
+      raf = requestAnimationFrame(draw)
+    }
+
+    raf = requestAnimationFrame(draw)
+
+    return () => cancelAnimationFrame(raf)
+  }, [webglOverlay, scan])
+
+  return (
                 <div key={group}>
                   <button
                     onClick={() => toggleGroup(group)}
@@ -1155,6 +1352,13 @@ function ViewerInner() {
 
         {/* Map canvas */}
         <div ref={mapRef} className="w-full h-full" style={{ cursor: 'crosshair' }} />
+
+        {webglOverlay && (
+          <canvas
+            ref={webglCanvasRef}
+            className="absolute inset-0 w-full h-full pointer-events-none z-10 mix-blend-screen"
+          />
+        )}
 
         {/* Cursor coords — sanitized, always valid */}
         {cursorCoords && (
@@ -1421,7 +1625,72 @@ function ViewerInner() {
                 )}
                 {scan.candidates.slice(0, 8).map((c) => {
                   const color = c.score > 0.7 ? '#f87171' : c.score > 0.4 ? '#fbbf24' : '#5b7c6f'
-                  return (
+                
+  useEffect(() => {
+    if (!webglOverlay || !scan?.candidates?.length) return
+
+    let raf = 0
+    const canvas = webglCanvasRef.current
+    const map = leafletRef.current
+    if (!canvas || !map) return
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const resize = () => {
+      const rect = canvas.parentElement?.getBoundingClientRect()
+      if (!rect) return
+      canvas.width = rect.width
+      canvas.height = rect.height
+    }
+
+    resize()
+
+    const draw = (time: number) => {
+      resize()
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+      scan.candidates.forEach((c) => {
+        const point = map.latLngToContainerPoint([c.lat, c.lng])
+        const pulse = 1 + Math.sin(time / 500 + c.score * 10) * 0.25
+        const radius = Math.max(20, c.diameter_m * 0.6) * pulse
+        const alpha = Math.min(0.35, Math.max(0.08, c.score * 0.35))
+
+        const gradient = ctx.createRadialGradient(
+          point.x,
+          point.y,
+          0,
+          point.x,
+          point.y,
+          radius
+        )
+
+        const color =
+          c.score > 0.7
+            ? '239,68,68'
+            : c.score > 0.4
+              ? '245,158,11'
+              : '91,124,111'
+
+        gradient.addColorStop(0, `rgba(${color},${alpha})`)
+        gradient.addColorStop(0.5, `rgba(${color},${alpha * 0.35})`)
+        gradient.addColorStop(1, `rgba(${color},0)`)
+
+        ctx.fillStyle = gradient
+        ctx.beginPath()
+        ctx.arc(point.x, point.y, radius, 0, Math.PI * 2)
+        ctx.fill()
+      })
+
+      raf = requestAnimationFrame(draw)
+    }
+
+    raf = requestAnimationFrame(draw)
+
+    return () => cancelAnimationFrame(raf)
+  }, [webglOverlay, scan])
+
+  return (
                     <div key={c.id} className="border-b border-[#1a2a1e] py-2 last:border-0">
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-[9px] font-mono font-medium" style={{ color }}>{c.id}</span>
@@ -1489,6 +1758,17 @@ function ViewerInner() {
             {aoiMode === 'rectangle' && 'Click two corners to draw AOI rectangle.'}
             {aoiMode === 'polygon' && 'Click vertices, double-click to finish polygon.'}
           </p>
+
+          <button
+            onClick={() => setWebglOverlay(v => !v)}
+            className={`w-full py-2 border text-[8px] tracking-[0.15em] transition-colors ${
+              webglOverlay
+                ? 'border-[#ef4444] text-[#ef4444]'
+                : 'border-[#1a2a1e] text-[#5b7c6f] hover:border-[#5b7c6f]'
+            }`}
+          >
+            {webglOverlay ? 'WEBGL HEATMAP ACTIVE' : 'WEBGL HEATMAP'}
+          </button>
 
           <button
             onClick={() => setTerrainMode(v => !v)}
@@ -1673,7 +1953,72 @@ function ViewerInner() {
 
               {scan?.candidates?.slice(0, 5).map((c, i) => {
                 const x = ((i + 1) / 6) * 240
-                return (
+              
+  useEffect(() => {
+    if (!webglOverlay || !scan?.candidates?.length) return
+
+    let raf = 0
+    const canvas = webglCanvasRef.current
+    const map = leafletRef.current
+    if (!canvas || !map) return
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const resize = () => {
+      const rect = canvas.parentElement?.getBoundingClientRect()
+      if (!rect) return
+      canvas.width = rect.width
+      canvas.height = rect.height
+    }
+
+    resize()
+
+    const draw = (time: number) => {
+      resize()
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+      scan.candidates.forEach((c) => {
+        const point = map.latLngToContainerPoint([c.lat, c.lng])
+        const pulse = 1 + Math.sin(time / 500 + c.score * 10) * 0.25
+        const radius = Math.max(20, c.diameter_m * 0.6) * pulse
+        const alpha = Math.min(0.35, Math.max(0.08, c.score * 0.35))
+
+        const gradient = ctx.createRadialGradient(
+          point.x,
+          point.y,
+          0,
+          point.x,
+          point.y,
+          radius
+        )
+
+        const color =
+          c.score > 0.7
+            ? '239,68,68'
+            : c.score > 0.4
+              ? '245,158,11'
+              : '91,124,111'
+
+        gradient.addColorStop(0, `rgba(${color},${alpha})`)
+        gradient.addColorStop(0.5, `rgba(${color},${alpha * 0.35})`)
+        gradient.addColorStop(1, `rgba(${color},0)`)
+
+        ctx.fillStyle = gradient
+        ctx.beginPath()
+        ctx.arc(point.x, point.y, radius, 0, Math.PI * 2)
+        ctx.fill()
+      })
+
+      raf = requestAnimationFrame(draw)
+    }
+
+    raf = requestAnimationFrame(draw)
+
+    return () => cancelAnimationFrame(raf)
+  }, [webglOverlay, scan])
+
+  return (
                   <circle
                     key={c.id}
                     cx={x}
@@ -1736,6 +2081,71 @@ function ViewerInner() {
 
 // ── Export with Suspense (required for useSearchParams) ────────────────
 export default function ViewerPage() {
+
+  useEffect(() => {
+    if (!webglOverlay || !scan?.candidates?.length) return
+
+    let raf = 0
+    const canvas = webglCanvasRef.current
+    const map = leafletRef.current
+    if (!canvas || !map) return
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const resize = () => {
+      const rect = canvas.parentElement?.getBoundingClientRect()
+      if (!rect) return
+      canvas.width = rect.width
+      canvas.height = rect.height
+    }
+
+    resize()
+
+    const draw = (time: number) => {
+      resize()
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+      scan.candidates.forEach((c) => {
+        const point = map.latLngToContainerPoint([c.lat, c.lng])
+        const pulse = 1 + Math.sin(time / 500 + c.score * 10) * 0.25
+        const radius = Math.max(20, c.diameter_m * 0.6) * pulse
+        const alpha = Math.min(0.35, Math.max(0.08, c.score * 0.35))
+
+        const gradient = ctx.createRadialGradient(
+          point.x,
+          point.y,
+          0,
+          point.x,
+          point.y,
+          radius
+        )
+
+        const color =
+          c.score > 0.7
+            ? '239,68,68'
+            : c.score > 0.4
+              ? '245,158,11'
+              : '91,124,111'
+
+        gradient.addColorStop(0, `rgba(${color},${alpha})`)
+        gradient.addColorStop(0.5, `rgba(${color},${alpha * 0.35})`)
+        gradient.addColorStop(1, `rgba(${color},0)`)
+
+        ctx.fillStyle = gradient
+        ctx.beginPath()
+        ctx.arc(point.x, point.y, radius, 0, Math.PI * 2)
+        ctx.fill()
+      })
+
+      raf = requestAnimationFrame(draw)
+    }
+
+    raf = requestAnimationFrame(draw)
+
+    return () => cancelAnimationFrame(raf)
+  }, [webglOverlay, scan])
+
   return (
     <Suspense fallback={
       <div className="h-screen bg-[#0a0e0b] flex items-center justify-center">
