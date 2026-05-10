@@ -875,7 +875,7 @@ export default function PortalGlobe() {
               )}
 
               <a
-                href={`/portal/viewer?lat=${selectedAstraCandidate.lat}&lng=${selectedAstraCandidate.lng}&zoom=13`}
+                href={`/portal/viewer?lat=${selectedAstraCandidate.lat}&lng=${selectedAstraCandidate.lng}&zoom=13&layers=${encodeURIComponent(selectedAstraCandidate.layers.join(','))}`}
                 className="block text-center border border-[#D4AF37]/30 text-[#D4AF37] text-[9px] tracking-[0.2em] py-2 hover:border-[#D4AF37]"
               >
                 OPEN TARGET IN VIEWER

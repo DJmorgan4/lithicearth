@@ -518,7 +518,19 @@ function ViewerInner() {
   const rawLng = parseFloat(searchParams.get('lng') || '0')
   const initCoords = sanitizeCoords(rawLat, rawLng)
 
-  const [layers, setLayers] = useState<LayerDef[]>(LAYER_DEFS)
+  const [layers, setLayers] = useState<LayerDef[]>(() => {
+    const requested = (searchParams.get('layers') || '')
+      .split(',')
+      .map(x => x.trim())
+      .filter(Boolean)
+
+    if (!requested.length) return LAYER_DEFS
+
+    return LAYER_DEFS.map(layer => ({
+      ...layer,
+      active: layer.active || requested.includes(layer.id),
+    }))
+  })
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [coords, setCoords] = useState(initCoords)
