@@ -84,11 +84,12 @@ function brightenTexture(img: HTMLImageElement, factor: number): THREE.Texture {
   return tex;
 }
 
-function GlobeScene({ posts, stratumSites, layers, astraCandidates, onGlobeClick, onMouseMove, onStratumSiteClick }: {
+function GlobeScene({ posts, stratumSites, layers, astraCandidates, selectedAstraCandidate, onGlobeClick, onMouseMove, onStratumSiteClick }: {
   posts: PublicPost[];
   stratumSites: StratumSite[];
   layers: LayerConfig[];
   astraCandidates: AstraCandidate[];
+  selectedAstraCandidate: AstraCandidate | null;
   onGlobeClick: (lat: number, lng: number) => void;
   onMouseMove: (lat: number, lng: number) => void;
   onStratumSiteClick: (site: StratumSite) => void;
@@ -102,8 +103,27 @@ function GlobeScene({ posts, stratumSites, layers, astraCandidates, onGlobeClick
 
   const active = useCallback((id: string) => layers.some(l => l.id === id && l.active), [layers]);
 
-  useFrame((_, delta) => {
+  useFrame(({ camera, clock }, delta) => {
     if (overlayRef.current) overlayRef.current.rotation.y += delta * 0.025;
+
+    if (selectedAstraCandidate && globeRef.current) {
+      const phi = (90 - selectedAstraCandidate.lat) * (Math.PI / 180);
+      const theta = selectedAstraCandidate.lng * (Math.PI / 180);
+
+      const target = new THREE.Vector3(
+        3.15 * Math.sin(phi) * Math.cos(theta),
+        3.15 * Math.cos(phi),
+        3.15 * Math.sin(phi) * Math.sin(theta)
+      );
+
+      camera.position.lerp(target, 0.018);
+      camera.lookAt(0, 0, 0);
+
+      const pulse = 1 + Math.sin(clock.elapsedTime * 2.5) * 0.03;
+      globeRef.current.scale.setScalar(pulse);
+    } else if (globeRef.current) {
+      globeRef.current.scale.lerp(new THREE.Vector3(1, 1, 1), 0.05);
+    }
   });
 
   // No auto-rotation — keeps markers aligned with texture
@@ -186,6 +206,42 @@ function GlobeScene({ posts, stratumSites, layers, astraCandidates, onGlobeClick
           </group>
         );
       })}
+
+
+      {/* Selected ASTRA target beam */}
+      {selectedAstraCandidate && (() => {
+        const phi = (90 - selectedAstraCandidate.lat) * (Math.PI / 180);
+        const theta = selectedAstraCandidate.lng * (Math.PI / 180);
+
+        const r = 2.18;
+
+        const x = r * Math.sin(phi) * Math.cos(theta);
+        const y = r * Math.cos(phi);
+        const z = r * Math.sin(phi) * Math.sin(theta);
+
+        return (
+          <group position={[x, y, z]}>
+            <mesh rotation={[Math.PI / 2, 0, 0]}>
+              <cylinderGeometry args={[0.012, 0.001, 0.7, 16, 1, true]} />
+              <meshBasicMaterial
+                color="#D4AF37"
+                transparent
+                opacity={0.18}
+                blending={THREE.AdditiveBlending}
+              />
+            </mesh>
+
+            <mesh>
+              <sphereGeometry args={[0.055, 24, 24]} />
+              <meshBasicMaterial
+                color="#D4AF37"
+                transparent
+                opacity={0.9}
+              />
+            </mesh>
+          </group>
+        );
+      })()}
 
       {/* Stratum site markers */}
       {stratumSites.map(site => {
@@ -511,7 +567,7 @@ export default function PortalGlobe() {
         </div>
 
         <Canvas camera={{ position: [-1.5, 0.8, 3.0], fov: 42 }} style={{ background: '#020508' }} gl={{ antialias: true }}>
-          <GlobeScene posts={posts} stratumSites={stratumSites} layers={layers} astraCandidates={astraDiscovery?.candidates || []} onGlobeClick={handleGlobeClick} onMouseMove={handleMouseMove} onStratumSiteClick={(site) => { setSelectedStratumSite(site); setReadout(null); setIntel(null); }} />
+          <GlobeScene posts={posts} stratumSites={stratumSites} layers={layers} astraCandidates={astraDiscovery?.candidates || []} selectedAstraCandidate={selectedAstraCandidate} onGlobeClick={handleGlobeClick} onMouseMove={handleMouseMove} onStratumSiteClick={(site) => { setSelectedStratumSite(site); setReadout(null); setIntel(null); }} />
         </Canvas>
 
         {cursorCoords && (
