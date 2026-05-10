@@ -27,6 +27,19 @@ interface StratumSite {
   stratum_observations?: { observation_type: string; notes: string; created_at: string }[];
   stratum_documents?: { doc_type: string; title: string; url: string }[];
 }
+interface AstraCandidate {
+  id: string; name: string; lat: number; lng: number;
+  type: string; score: number; reason: string;
+  layers: string[]; brief: string[];
+}
+interface AstraDiscovery {
+  intent: string;
+  query: string;
+  center: { lat: number; lng: number };
+  recommended_layers: string[];
+  synthesis: string;
+  candidates: AstraCandidate[];
+}
 
 const DEFAULT_LAYERS: LayerConfig[] = [
   { id: 'satellite', label: 'Satellite Imagery',  group: 'Base',          active: true,  opacity: 1,    source: 'Sentinel-2' },
@@ -71,10 +84,11 @@ function brightenTexture(img: HTMLImageElement, factor: number): THREE.Texture {
   return tex;
 }
 
-function GlobeScene({ posts, stratumSites, layers, onGlobeClick, onMouseMove, onStratumSiteClick }: {
+function GlobeScene({ posts, stratumSites, layers, astraCandidates, onGlobeClick, onMouseMove, onStratumSiteClick }: {
   posts: PublicPost[];
   stratumSites: StratumSite[];
   layers: LayerConfig[];
+  astraCandidates: AstraCandidate[];
   onGlobeClick: (lat: number, lng: number) => void;
   onMouseMove: (lat: number, lng: number) => void;
   onStratumSiteClick: (site: StratumSite) => void;
@@ -151,6 +165,27 @@ function GlobeScene({ posts, stratumSites, layers, onGlobeClick, onMouseMove, on
           <meshBasicMaterial color={0x5b7c6f} transparent opacity={0.8} />
         </mesh>
       ))}
+
+      {/* ASTRA discovery markers */}
+      {astraCandidates.map(candidate => {
+        const phi = (90 - candidate.lat) * (Math.PI / 180);
+        const theta = candidate.lng * (Math.PI / 180);
+        const r = 2.085;
+        const pos = new THREE.Vector3(r * Math.sin(phi) * Math.cos(theta), r * Math.cos(phi), r * Math.sin(phi) * Math.sin(theta));
+        const hot = candidate.score >= 88;
+        return (
+          <group key={candidate.id} position={pos}>
+            <mesh>
+              <sphereGeometry args={[hot ? 0.04 : 0.032, 16, 16]} />
+              <meshBasicMaterial color={hot ? '#D4AF37' : '#12A8AC'} transparent opacity={0.95} />
+            </mesh>
+            <mesh>
+              <sphereGeometry args={[hot ? 0.075 : 0.06, 16, 16]} />
+              <meshBasicMaterial color={hot ? '#D4AF37' : '#12A8AC'} transparent opacity={0.18} blending={THREE.AdditiveBlending} />
+            </mesh>
+          </group>
+        );
+      })}
 
       {/* Stratum site markers */}
       {stratumSites.map(site => {
@@ -263,6 +298,10 @@ export default function PortalGlobe() {
   const [narrating, setNarrating] = useState(false);
   const [narration, setNarration] = useState<string | null>(null);
   const [siteSaved, setSiteSaved] = useState(false);
+  const [astraQuery, setAstraQuery] = useState('');
+  const [astraLoading, setAstraLoading] = useState(false);
+  const [astraDiscovery, setAstraDiscovery] = useState<AstraDiscovery | null>(null);
+  const [selectedAstraCandidate, setSelectedAstraCandidate] = useState<AstraCandidate | null>(null);
 
   const supabase = createClient();
 
@@ -334,6 +373,43 @@ export default function PortalGlobe() {
 
   const toggleLayer = (id: string) => setLayers(p => p.map(l => l.id === id ? { ...l, active: !l.active } : l));
   const setOpacity  = (id: string, v: number) => setLayers(p => p.map(l => l.id === id ? { ...l, opacity: v } : l));
+
+  const activateAstraLayers = (layerIds: string[]) => {
+    const mapped = layerIds.map(id => id === 'wetlands' ? 'hydro' : id === 'topo' ? 'terrain' : id);
+    setLayers(prev => prev.map(layer => ({
+      ...layer,
+      active: layer.active || mapped.includes(layer.id),
+    })));
+  };
+
+  const runAstraDiscovery = async () => {
+    if (!astraQuery.trim() || astraLoading) return;
+    setAstraLoading(true);
+    setSelectedAstraCandidate(null);
+    try {
+      const res = await fetch('/api/astra/discover', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: astraQuery }),
+      });
+      const data = await res.json();
+      if (data?.astra) {
+        setAstraDiscovery(data.astra);
+        activateAstraLayers(data.astra.recommended_layers || []);
+        if (data.astra.candidates?.[0]) {
+          const c = data.astra.candidates[0];
+          setSelectedAstraCandidate(c);
+          setReadout({ lat: c.lat, lng: c.lng });
+        }
+        showToast('ASTRA discovery rendered on globe');
+      }
+    } catch (e) {
+      console.error(e);
+      showToast('ASTRA discovery failed');
+    } finally {
+      setAstraLoading(false);
+    }
+  };
   const toggleGroup = (g: string) => setCollapsedGroups(p => { const n = new Set(p); n.has(g) ? n.delete(g) : n.add(g); return n; });
 
   return (
@@ -388,8 +464,54 @@ export default function PortalGlobe() {
           <Layers size={14} className="text-[#5b7c6f]" />
         </button>
 
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 w-[min(720px,calc(100vw-2rem))] bg-[#07110c]/95 border border-[#D4AF37]/30 shadow-2xl">
+          <div className="px-4 py-3 border-b border-[#1a2a1e] flex items-center justify-between">
+            <span className="text-[#D4AF37] text-[9px] tracking-[0.3em]">ASTRA DISCOVERY GLOBE</span>
+            <span className="text-[#3a4a3e] text-[8px] tracking-[0.18em]">{astraDiscovery?.intent?.replaceAll('_', ' ').toUpperCase() || 'ASK THE PLANET'}</span>
+          </div>
+          <div className="p-3 flex gap-2">
+            <input
+              value={astraQuery}
+              onChange={(e) => setAstraQuery(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') runAstraDiscovery(); }}
+              placeholder="Ask ASTRA: find low-key public water for dogs, historical terrain, WMA wetlands, sandhill crane zones..."
+              className="flex-1 bg-[#020806] border border-[#1a2a1e] px-3 py-2 text-[#c8c4ba] text-[11px] outline-none focus:border-[#D4AF37]/50"
+            />
+            <button
+              onClick={runAstraDiscovery}
+              disabled={astraLoading}
+              className="px-4 py-2 border border-[#D4AF37]/40 text-[#D4AF37] text-[9px] tracking-[0.2em] hover:border-[#D4AF37] disabled:opacity-50"
+            >
+              {astraLoading ? 'THINKING' : 'RENDER'}
+            </button>
+          </div>
+          {astraDiscovery && (
+            <div className="px-4 pb-3">
+              <p className="text-[#7a8a7d] text-[10px] leading-relaxed border-l border-[#D4AF37]/30 pl-3 mb-2">
+                {astraDiscovery.synthesis}
+              </p>
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {astraDiscovery.candidates.map(c => (
+                  <button
+                    key={c.id}
+                    onClick={() => { setSelectedAstraCandidate(c); setReadout({ lat: c.lat, lng: c.lng }); activateAstraLayers(c.layers); }}
+                    className={`min-w-[190px] text-left border px-3 py-2 transition-colors ${
+                      selectedAstraCandidate?.id === c.id
+                        ? 'border-[#D4AF37]/70 bg-[#11100a]'
+                        : 'border-[#1a2a1e] hover:border-[#5b7c6f]'
+                    }`}
+                  >
+                    <p className="text-[#c8c4ba] text-[10px] truncate">{c.name}</p>
+                    <p className="text-[#D4AF37] text-[8px] mt-1">{c.score}% · {c.type}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
         <Canvas camera={{ position: [-1.5, 0.8, 3.0], fov: 42 }} style={{ background: '#020508' }} gl={{ antialias: true }}>
-          <GlobeScene posts={posts} stratumSites={stratumSites} layers={layers} onGlobeClick={handleGlobeClick} onMouseMove={handleMouseMove} onStratumSiteClick={(site) => { setSelectedStratumSite(site); setReadout(null); setIntel(null); }} />
+          <GlobeScene posts={posts} stratumSites={stratumSites} layers={layers} astraCandidates={astraDiscovery?.candidates || []} onGlobeClick={handleGlobeClick} onMouseMove={handleMouseMove} onStratumSiteClick={(site) => { setSelectedStratumSite(site); setReadout(null); setIntel(null); }} />
         </Canvas>
 
         {cursorCoords && (
@@ -542,6 +664,32 @@ export default function PortalGlobe() {
                 )}
               </div>
             )}
+          </div>
+        )}
+
+        {selectedAstraCandidate && (
+          <div className="absolute bottom-4 right-4 w-80 bg-[#07110c] border border-[#D4AF37]/40 z-30">
+            <div className="px-4 py-3 border-b border-[#D4AF37]/20 flex items-center justify-between">
+              <span className="text-[#D4AF37] text-[9px] tracking-[0.25em]">ASTRA TARGET</span>
+              <button onClick={() => setSelectedAstraCandidate(null)} className="text-[#3a4a3e] hover:text-[#c8c4ba]"><X size={11} /></button>
+            </div>
+            <div className="p-4 space-y-2">
+              <p className="text-[#c8c4ba] text-sm">{selectedAstraCandidate.name}</p>
+              <ReadoutRow label="TYPE" value={selectedAstraCandidate.type} />
+              <ReadoutRow label="SCORE" value={`${selectedAstraCandidate.score}%`} accent="#D4AF37" />
+              <p className="text-[#7a8a7d] text-[10px] leading-relaxed border-l border-[#1a2a1e] pl-2">{selectedAstraCandidate.reason}</p>
+              <div className="border-t border-[#1a2a1e] pt-2 space-y-1">
+                {selectedAstraCandidate.brief.map((b, i) => (
+                  <p key={i} className="text-[#3a4a3e] text-[9px] leading-relaxed">• {b}</p>
+                ))}
+              </div>
+              <a
+                href={`/portal/viewer?lat=${selectedAstraCandidate.lat}&lng=${selectedAstraCandidate.lng}&zoom=13`}
+                className="block text-center border border-[#D4AF37]/30 text-[#D4AF37] text-[9px] tracking-[0.2em] py-2 hover:border-[#D4AF37]"
+              >
+                OPEN TARGET IN VIEWER
+              </a>
+            </div>
           </div>
         )}
 
