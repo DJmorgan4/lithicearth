@@ -53,6 +53,7 @@ function NewReportInner() {
   const [location, setLocation] = useState(locationParam)
   const [generating, setGenerating] = useState(false)
   const [reportData, setReportData] = useState<any>(null)
+  const [showCandidates, setShowCandidates] = useState(false)
   const [mapImage, setMapImage] = useState<string>('')
   const [error, setError] = useState('')
   const [phase, setPhase] = useState('')
@@ -218,6 +219,8 @@ function NewReportInner() {
             </div>
           </Section>
 
+          <button onClick={() => setShowCandidates(s => !s)} style={{margin:'8px 0',padding:'6px 14px',background:'#111',border:'1px solid #B08840',borderRadius:'4px',color:'#B08840',fontSize:'10px',cursor:'pointer',letterSpacing:'0.1em'}}>{showCandidates ? 'HIDE CANDIDATES' : '+ SHOW CANDIDATE ANOMALIES'}</button>
+          {showCandidates && (
           <Section title="CANDIDATES">
             <div className="space-y-2">
               {reportData.scan?.candidates?.map((c: any) => (
@@ -232,6 +235,7 @@ function NewReportInner() {
               ))}
             </div>
           </Section>
+          )}
 
           <Section title="SAR + MUON">
             <div className="grid grid-cols-2 gap-3 text-[10px] font-light">
