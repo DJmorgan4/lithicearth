@@ -6,6 +6,7 @@ import {
   Copy, Check, ArrowLeft, Crosshair, AlertCircle, Radio,
   Thermometer, Mountain, Eye, Atom, Droplets, Zap
 } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
 
 // ── Coordinate utilities ───────────────────────────────────────────────
 function clampLat(lat: number): number {
@@ -20,6 +21,19 @@ function sanitizeCoords(lat: number, lng: number) {
     lat: parseFloat(clampLat(lat).toFixed(5)),
     lng: parseFloat(wrapLng(lng).toFixed(5)),
   }
+}
+
+type AOIMode = 'pin' | 'rectangle' | 'polygon'
+
+type AOIGeometry =
+  | { type: 'Point'; coordinates: [number, number] }
+  | { type: 'Polygon'; coordinates: [number, number][][] }
+
+function polygonCenter(ring: [number, number][]) {
+  const pts = ring.length > 1 ? ring.slice(0, -1) : ring
+  const lng = pts.reduce((sum, p) => sum + p[0], 0) / Math.max(pts.length, 1)
+  const lat = pts.reduce((sum, p) => sum + p[1], 0) / Math.max(pts.length, 1)
+  return sanitizeCoords(lat, lng)
 }
 
 // ── Types ──────────────────────────────────────────────────────────────
@@ -402,6 +416,11 @@ function ViewerInner() {
   const leafletRef = useRef<any>(null)
   const layerRefs = useRef<Record<string, any>>({})
   const markerRef = useRef<any>(null)
+  const aoiLayerRef = useRef<any>(null)
+  const aoiGuideLayerRef = useRef<any>(null)
+  const aoiModeRef = useRef<AOIMode>('pin')
+  const rectangleStartRef = useRef<{ lat: number; lng: number } | null>(null)
+  const polygonPointsRef = useRef<[number, number][]>([])
 
   // Sanitize initial coords from URL params
   const rawLat = parseFloat(searchParams.get('lat') || '0')
@@ -417,10 +436,100 @@ function ViewerInner() {
   const [intelLoading, setIntelLoading] = useState(false)
   const [intelError, setIntelError] = useState(false)
   const [copied, setCopied] = useState(false)
-  const [zoom, setZoom] = useState(14)
+  const initialZoom = Number.isFinite(parseInt(searchParams.get('zoom') || '14', 10)) ? parseInt(searchParams.get('zoom') || '14', 10) : 14
+  const [zoom, setZoom] = useState(initialZoom)
   const [scan, setScan] = useState<ScanData | null>(null)
   const [scanLoading, setScanLoading] = useState(false)
+  const [aoiMode, setAoiMode] = useState<AOIMode>('pin')
+  const [aoiGeometry, setAoiGeometry] = useState<AOIGeometry | null>({
+    type: 'Point',
+    coordinates: [initCoords.lng, initCoords.lat],
+  })
+  const [aoiSaveStatus, setAoiSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const scanLayerRef = useRef<any>(null)
+
+  const setAOIModeSafe = useCallback((mode: AOIMode) => {
+    aoiModeRef.current = mode
+    setAoiMode(mode)
+    setAoiSaveStatus('idle')
+    rectangleStartRef.current = null
+    polygonPointsRef.current = []
+    aoiGuideLayerRef.current?.remove()
+    aoiGuideLayerRef.current = null
+  }, [])
+
+  const redrawAOI = useCallback(async (geometry: AOIGeometry) => {
+    const L = (await import('leaflet')).default
+    const map = leafletRef.current
+    if (!map) return
+
+    aoiLayerRef.current?.remove()
+
+    if (geometry.type === 'Point') {
+      const [lng, lat] = geometry.coordinates
+      aoiLayerRef.current = L.circleMarker([lat, lng], {
+        radius: 9,
+        color: '#D4AF37',
+        weight: 2,
+        fillColor: '#D4AF37',
+        fillOpacity: 0.25,
+      }).addTo(map)
+      markerRef.current?.setLatLng([lat, lng])
+      return
+    }
+
+    const ring = geometry.coordinates[0]
+    const latlngs = ring.map(([lng, lat]) => [lat, lng])
+    aoiLayerRef.current = L.polygon(latlngs, {
+      color: '#D4AF37',
+      weight: 2,
+      fillColor: '#D4AF37',
+      fillOpacity: 0.12,
+    }).addTo(map)
+  }, [])
+
+  const applyAOI = useCallback(async (geometry: AOIGeometry, center: { lat: number; lng: number }) => {
+    setAoiGeometry(geometry)
+    setCoords(center)
+    markerRef.current?.setLatLng([center.lat, center.lng])
+    await redrawAOI(geometry)
+    fetchIntel(center.lat, center.lng)
+    fetchScan(center.lat, center.lng)
+    const z = leafletRef.current?.getZoom?.() ?? zoom
+    router.replace(`/portal/viewer?lat=${center.lat}&lng=${center.lng}&zoom=${z}`, { scroll: false })
+  }, [fetchIntel, fetchScan, redrawAOI, router, zoom])
+
+  const saveAOI = useCallback(async () => {
+    if (!aoiGeometry) return
+    setAoiSaveStatus('saving')
+    try {
+      const { data: auth } = await supabase.auth.getUser()
+      const userId = auth?.user?.id
+
+      const payload: any = {
+        source: 'lithicearth_viewer',
+        type: 'aoi',
+        lat: coords.lat,
+        lng: coords.lng,
+        flagged: false,
+        properties: {
+          aoi_mode: aoiMode,
+          geometry_type: aoiGeometry.type,
+          geometry: aoiGeometry,
+          zoom,
+        },
+      }
+
+      if (userId) payload.user_id = userId
+
+      const { error } = await supabase.from('portal_observations').insert(payload)
+      if (error) throw error
+      setAoiSaveStatus('saved')
+    } catch (e) {
+      console.error('AOI save failed', e)
+      setAoiSaveStatus('error')
+    }
+  }, [aoiGeometry, aoiMode, coords.lat, coords.lng, zoom])
 
   // ── Fetch intel from engine ──────────────────────────────────────────
   const fetchIntel = useCallback(async (lat: number, lng: number) => {
@@ -489,7 +598,7 @@ function ViewerInner() {
 
       const map = L.map(mapRef.current!, {
         center: [initCoords.lat, initCoords.lng],
-        zoom: 14,
+        zoom: initialZoom,
         zoomControl: false,
         attributionControl: false,
       })
@@ -515,14 +624,62 @@ function ViewerInner() {
       })
       markerRef.current = L.marker([initCoords.lat, initCoords.lng], { icon }).addTo(map)
 
-      // Click → sanitize coords → move AOI + fetch
-      map.on('click', (e: any) => {
+      // Click → AOI tools
+      map.on('click', async (e: any) => {
         const safe = sanitizeCoords(e.latlng.lat, e.latlng.lng)
-        setCoords(safe)
-        markerRef.current?.setLatLng([safe.lat, safe.lng])
-        fetchIntel(safe.lat, safe.lng)
-        fetchScan(safe.lat, safe.lng)
-        router.replace(`/portal/viewer?lat=${safe.lat}&lng=${safe.lng}`, { scroll: false })
+        const mode = aoiModeRef.current
+
+        if (mode === 'pin') {
+          await applyAOI({ type: 'Point', coordinates: [safe.lng, safe.lat] }, safe)
+          return
+        }
+
+        if (mode === 'rectangle') {
+          if (!rectangleStartRef.current) {
+            rectangleStartRef.current = safe
+            markerRef.current?.setLatLng([safe.lat, safe.lng])
+            return
+          }
+
+          const start = rectangleStartRef.current
+          rectangleStartRef.current = null
+          const west = Math.min(start.lng, safe.lng)
+          const east = Math.max(start.lng, safe.lng)
+          const south = Math.min(start.lat, safe.lat)
+          const north = Math.max(start.lat, safe.lat)
+          const ring: [number, number][] = [
+            [west, south],
+            [east, south],
+            [east, north],
+            [west, north],
+            [west, south],
+          ]
+          await applyAOI({ type: 'Polygon', coordinates: [ring] }, polygonCenter(ring))
+          return
+        }
+
+        if (mode === 'polygon') {
+          polygonPointsRef.current = [...polygonPointsRef.current, [safe.lng, safe.lat]]
+          aoiGuideLayerRef.current?.remove()
+          const L = (await import('leaflet')).default
+          if (polygonPointsRef.current.length > 1) {
+            aoiGuideLayerRef.current = L.polyline(
+              polygonPointsRef.current.map(([lng, lat]) => [lat, lng]),
+              { color: '#D4AF37', weight: 1, dashArray: '4 4' }
+            ).addTo(map)
+          }
+          markerRef.current?.setLatLng([safe.lat, safe.lng])
+        }
+      })
+
+      map.on('dblclick', async () => {
+        if (aoiModeRef.current !== 'polygon') return
+        if (polygonPointsRef.current.length < 3) return
+        const ring = [...polygonPointsRef.current, polygonPointsRef.current[0]]
+        polygonPointsRef.current = []
+        aoiGuideLayerRef.current?.remove()
+        aoiGuideLayerRef.current = null
+        await applyAOI({ type: 'Polygon', coordinates: [ring] }, polygonCenter(ring))
       })
 
       // Mousemove — sanitize to prevent -439 display
@@ -531,7 +688,11 @@ function ViewerInner() {
         setCursorCoords(safe)
       })
       map.on('mouseout', () => setCursorCoords(null))
-      map.on('zoom', () => setZoom(map.getZoom()))
+      map.on('zoom', () => {
+        const z = map.getZoom()
+        setZoom(z)
+        router.replace(`/portal/viewer?lat=${coords.lat}&lng=${coords.lng}&zoom=${z}`, { scroll: false })
+      })
     }
 
     initMap()
@@ -1019,6 +1180,38 @@ function ViewerInner() {
             )}
           </div>
         )}
+
+        {/* AOI Tools */}
+        <div className="border-t border-[#1a2a1e] p-3 space-y-2">
+          <div className="text-[#5b7c6f] text-[8px] tracking-[0.25em]">AOI TOOLS</div>
+          <div className="grid grid-cols-3 gap-1">
+            {(['pin', 'rectangle', 'polygon'] as AOIMode[]).map((mode) => (
+              <button
+                key={mode}
+                onClick={() => setAOIModeSafe(mode)}
+                className={`py-1 border text-[7px] tracking-[0.16em] uppercase transition-colors ${
+                  aoiMode === mode
+                    ? 'border-[#D4AF37]/60 text-[#D4AF37]'
+                    : 'border-[#1a2a1e] text-[#5b7c6f] hover:border-[#5b7c6f]'
+                }`}
+              >
+                {mode}
+              </button>
+            ))}
+          </div>
+          <p className="text-[#2a3a2e] text-[7px] leading-relaxed">
+            {aoiMode === 'pin' && 'Click map to drop AOI pin.'}
+            {aoiMode === 'rectangle' && 'Click two corners to draw AOI rectangle.'}
+            {aoiMode === 'polygon' && 'Click vertices, double-click to finish polygon.'}
+          </p>
+          <button
+            onClick={saveAOI}
+            disabled={!aoiGeometry || aoiSaveStatus === 'saving'}
+            className="w-full py-2 border border-[#1a2a1e] hover:border-[#5b7c6f] text-[#5b7c6f] text-[9px] tracking-[0.2em] transition-colors disabled:opacity-40"
+          >
+            {aoiSaveStatus === 'saving' ? 'SAVING AOI...' : aoiSaveStatus === 'saved' ? '✓ AOI SAVED' : aoiSaveStatus === 'error' ? 'AOI SAVE FAILED' : 'SAVE AOI'}
+          </button>
+        </div>
 
         {/* Actions */}
         <div className="border-t border-[#1a2a1e] p-3 space-y-2">
