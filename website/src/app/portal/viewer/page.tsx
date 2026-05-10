@@ -110,6 +110,14 @@ interface MuonBaseline {
   model: string
   valid: boolean
 }
+interface ScanCluster {
+  id: string
+  lat: number
+  lng: number
+  members: ScanCandidate[]
+  score: number
+}
+
 interface ScanData {
   candidates: ScanCandidate[]
   radius_m: number
@@ -470,7 +478,7 @@ function ViewerInner() {
     polygonPointsRef.current = []
     aoiGuideLayerRef.current?.remove()
     aoiGuideLayerRef.current = null
-  }, [])
+  }, [clusterCandidates])
 
   const redrawAOI = useCallback(async (geometry: AOIGeometry) => {
     const L = (await import('leaflet')).default
@@ -628,6 +636,44 @@ function ViewerInner() {
     }
   }, [])
 
+
+  const clusterCandidates = useCallback((candidates: ScanCandidate[]): ScanCluster[] => {
+    const visited = new Set<string>()
+    const clusters: ScanCluster[] = []
+
+    const threshold = 0.0025 // ~250m
+
+    function dist(a: ScanCandidate, b: ScanCandidate) {
+      const dx = a.lng - b.lng
+      const dy = a.lat - b.lat
+      return Math.sqrt(dx * dx + dy * dy)
+    }
+
+    for (const c of candidates) {
+      if (visited.has(c.id)) continue
+
+      const neighbors = candidates.filter(n => dist(c, n) < threshold)
+
+      if (neighbors.length < 2) continue
+
+      neighbors.forEach(n => visited.add(n.id))
+
+      const lat = neighbors.reduce((s, n) => s + n.lat, 0) / neighbors.length
+      const lng = neighbors.reduce((s, n) => s + n.lng, 0) / neighbors.length
+      const score = neighbors.reduce((s, n) => s + n.score, 0) / neighbors.length
+
+      clusters.push({
+        id: `cluster-${c.id}`,
+        lat,
+        lng,
+        members: neighbors,
+        score,
+      })
+    }
+
+    return clusters
+  }, [])
+
   // ── Fetch intel from engine ──────────────────────────────────────────
   const fetchIntel = useCallback(async (lat: number, lng: number) => {
     // Guard — never send invalid coords to engine
@@ -665,6 +711,38 @@ function ViewerInner() {
       if (leafletRef.current && data.candidates?.length) {
         const L = (await import('leaflet')).default
         const group = L.layerGroup()
+        const clusters = clusterCandidates(data.candidates)
+
+        clusters.forEach((cluster) => {
+          const intensity =
+            cluster.score > 0.7 ? '#ef4444' :
+            cluster.score > 0.45 ? '#f59e0b' :
+            '#5b7c6f'
+
+          L.circle([cluster.lat, cluster.lng], {
+            radius: 140,
+            color: intensity,
+            weight: 1,
+            opacity: 0.9,
+            fillColor: intensity,
+            fillOpacity: 0.08,
+          }).bindTooltip(
+            `<div style="font-size:10px;font-family:monospace;background:#0b0f0c;border:1px solid #1a2a1e;color:#c8c4ba;padding:4px 8px">
+              <b>ANOMALY CLUSTER</b><br/>
+              members: ${cluster.members.length}<br/>
+              confidence: ${(cluster.score * 100).toFixed(0)}%
+            </div>`
+          ).addTo(group)
+
+          L.circleMarker([cluster.lat, cluster.lng], {
+            radius: 6,
+            color: intensity,
+            weight: 2,
+            fillColor: intensity,
+            fillOpacity: 0.9,
+          }).addTo(group)
+        })
+
         data.candidates.forEach((c) => {
           const color = c.score > 0.7 ? '#f87171' : c.score > 0.4 ? '#fbbf24' : '#5b7c6f'
           L.circle([c.lat, c.lng], {
