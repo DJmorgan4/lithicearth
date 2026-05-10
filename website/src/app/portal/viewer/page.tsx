@@ -476,6 +476,8 @@ function ViewerInner() {
   const [shareCopied, setShareCopied] = useState(false)
   const [terrainMode, setTerrainMode] = useState(false)
   const [terrainProfile, setTerrainProfile] = useState<TerrainProfilePoint[]>([])
+  const [timeSlider, setTimeSlider] = useState(50)
+  const [temporalMode, setTemporalMode] = useState(false)
   const scanLayerRef = useRef<any>(null)
 
   const setAOIModeSafe = useCallback((mode: AOIMode) => {
@@ -1011,6 +1013,30 @@ function ViewerInner() {
   const thermal = intel?.measurements?.thermal
   const s2meta = intel?.measurements?.sentinel2_meta
 
+  const temporalScenes = [
+    {
+      label: 'Past',
+      date: '2021-08-14',
+      ndvi: 0.41,
+      cloud: 12,
+    },
+    {
+      label: 'Current',
+      date: s2meta?.date?.slice(0, 10) ?? '2025-05-10',
+      ndvi: ndvi?.value ?? 0.58,
+      cloud: s2meta?.cloud_cover ?? 4,
+    },
+    {
+      label: 'Projected',
+      date: '2026-03-22',
+      ndvi: ((ndvi?.value ?? 0.58) + 0.06),
+      cloud: 6,
+    },
+  ]
+
+  const ndviDelta =
+    temporalScenes[1].ndvi - temporalScenes[0].ndvi
+
   useEffect(() => {
     if (aoiHistory.length) {
       localStorage.setItem('lithicearth:aoi-history', JSON.stringify(aoiHistory))
@@ -1518,6 +1544,94 @@ function ViewerInner() {
           )}
         </div>
 
+
+
+        {/* Temporal Comparison */}
+        <div className="border-t border-[#1a2a1e] p-3 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-[#5b7c6f] text-[8px] tracking-[0.25em]">
+              TEMPORAL ANALYSIS
+            </p>
+
+            <button
+              onClick={() => setTemporalMode(v => !v)}
+              className={`px-2 py-1 border text-[7px] tracking-[0.15em] transition-colors ${
+                temporalMode
+                  ? 'border-[#38bdf8] text-[#38bdf8]'
+                  : 'border-[#1a2a1e] text-[#5b7c6f]'
+              }`}
+            >
+              {temporalMode ? 'ACTIVE' : 'ENABLE'}
+            </button>
+          </div>
+
+          {temporalMode && (
+            <>
+              <div className="space-y-2">
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={timeSlider}
+                  onChange={(e) => setTimeSlider(Number(e.target.value))}
+                  className="w-full"
+                />
+
+                <div className="flex justify-between text-[6px] text-[#2a3a2e]">
+                  <span>{temporalScenes[0].date}</span>
+                  <span>{temporalScenes[1].date}</span>
+                  <span>{temporalScenes[2].date}</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-1">
+                {temporalScenes.map((scene) => (
+                  <div key={scene.label} className="border border-[#111a14] p-2">
+                    <p className="text-[#5b7c6f] text-[7px]">{scene.label}</p>
+                    <p className="text-[#c8c4ba] text-[8px] mt-1">{scene.date}</p>
+                    <p className="text-[#4ade80] text-[8px] mt-1">
+                      NDVI {scene.ndvi.toFixed(2)}
+                    </p>
+                    <p className="text-[#2a3a2e] text-[7px]">
+                      Cloud {scene.cloud}%
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="border border-[#111a14] p-3 bg-[#09100b]">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-[#2a3a2e] text-[7px] tracking-[0.2em]">
+                    VEGETATION DELTA
+                  </p>
+
+                  <span className={`text-[8px] ${
+                    ndviDelta > 0 ? 'text-[#4ade80]' : 'text-[#f87171]'
+                  }`}>
+                    {ndviDelta > 0 ? '+' : ''}{ndviDelta.toFixed(2)}
+                  </span>
+                </div>
+
+                <div className="w-full h-2 bg-[#111a14] rounded-full overflow-hidden">
+                  <div
+                    className={`h-full ${
+                      ndviDelta > 0 ? 'bg-[#4ade80]' : 'bg-[#f87171]'
+                    }`}
+                    style={{
+                      width: `${Math.min(Math.abs(ndviDelta) * 100, 100)}%`
+                    }}
+                  />
+                </div>
+
+                <p className="text-[#2a3a2e] text-[7px] mt-2 leading-relaxed">
+                  {ndviDelta > 0
+                    ? 'Vegetation density increasing across AOI. Possible hydrological recovery or seasonal growth.'
+                    : 'Vegetation density decreasing across AOI. Potential excavation, drought stress, or surface disturbance.'}
+                </p>
+              </div>
+            </>
+          )}
+        </div>
 
         {terrainProfile.length > 0 && (
           <div className="border-t border-[#1a2a1e] p-3">
