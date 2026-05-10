@@ -404,8 +404,8 @@ function ViewerInner() {
   const markerRef = useRef<any>(null)
 
   // Sanitize initial coords from URL params
-  const rawLat = parseFloat(searchParams.get('lat') || '33.17429')
-  const rawLng = parseFloat(searchParams.get('lng') || '-96.61903')
+  const rawLat = parseFloat(searchParams.get('lat') || '0')
+  const rawLng = parseFloat(searchParams.get('lng') || '0')
   const initCoords = sanitizeCoords(rawLat, rawLng)
 
   const [layers, setLayers] = useState<LayerDef[]>(LAYER_DEFS)

@@ -43,8 +43,19 @@ function Section({ title, children, defaultOpen = false }: { title: string; chil
 
 function NewReportInner() {
   const searchParams = useSearchParams()
-  const lat = parseFloat(searchParams.get('lat') || '33.17429')
-  const lng = parseFloat(searchParams.get('lng') || '-96.61903')
+  const latParam = searchParams.get('lat')
+  const lngParam = searchParams.get('lng')
+
+  const lat = latParam ? parseFloat(latParam) : NaN
+  const lng = lngParam ? parseFloat(lngParam) : NaN
+
+  const hasValidCoords =
+    Number.isFinite(lat) &&
+    Number.isFinite(lng) &&
+    lat >= -90 &&
+    lat <= 90 &&
+    lng >= -180 &&
+    lng <= 180
   const locationParam = searchParams.get('location') || ''
 
   const [reportType, setReportType] = useState('msigi')
