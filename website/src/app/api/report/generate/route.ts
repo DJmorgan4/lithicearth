@@ -26,7 +26,7 @@ const LAYER_CONTEXT: Record<string, string> = {
 
 export async function POST(req: NextRequest) {
   try {
-    const { lat, lng, activeLayers, reportType, notes, location } = await req.json()
+    const { lat, lng, activeLayers, reportType, notes, location, aoi } = await req.json()
     if (!lat || !lng) return NextResponse.json({ error: 'lat and lng required' }, { status: 400 })
 
     // 1. MSIGI scan
@@ -99,20 +99,37 @@ Close with an MSIGI SYNTHESIS — what the full multi-sensor picture indicates a
       })
     } catch (e) { console.error('ASTRA learning failed:', e) }
 
-    // Fetch Mapbox static satellite map with candidate markers
+    // Fetch Mapbox static satellite map with candidate markers + AOI bbox
     let mapImageBase64 = ''
     try {
       const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || ''
       if (MAPBOX_TOKEN && lat && lng) {
-        // Build marker overlays for top candidates
         const candidates = scanData?.candidates?.slice(0,5) || []
         const markers = candidates.map((c: any, i: number) =>
           `pin-s-${String.fromCharCode(65+i)}+2F5D8C(${c.lng},${c.lat})`
         ).join(',')
-        const overlay = markers ? `${markers},` : ''
-        const zoom = 14
+
+        // If AOI is a rectangle/polygon, use bbox auto-fit instead of fixed zoom
+        // AOI geometry is GeoJSON with coordinates in [lng,lat] order
+        let mapUrl = ''
         const size = '800x500'
-        const mapUrl = `https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/static/${overlay}${lng},${lat},${zoom},0/${size}@2x?access_token=${MAPBOX_TOKEN}`
+        if (aoi && aoi.type === 'Polygon' && aoi.coordinates?.[0]?.length >= 4) {
+          const ring = aoi.coordinates[0] as [number, number][]
+          const lngs = ring.map((p: [number,number]) => p[0])
+          const lats = ring.map((p: [number,number]) => p[1])
+          const west  = Math.min(...lngs)
+          const east  = Math.max(...lngs)
+          const south = Math.min(...lats)
+          const north = Math.max(...lats)
+          const overlay = markers ? `${markers},` : ''
+          // Use bbox auto-fit: [west,south,east,north]
+          mapUrl = `https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/static/${overlay}${lng},${lat},13,0/${size}@2x?access_token=${MAPBOX_TOKEN}&bbox=${west},${south},${east},${north}`
+        } else {
+          // Pin point — fixed zoom centered on point
+          const overlay = markers ? `${markers},` : ''
+          mapUrl = `https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/static/${overlay}${lng},${lat},14,0/${size}@2x?access_token=${MAPBOX_TOKEN}`
+        }
+
         const mapRes = await fetch(mapUrl, { signal: AbortSignal.timeout(10000) })
         if (mapRes.ok) {
           const buf = await mapRes.arrayBuffer()

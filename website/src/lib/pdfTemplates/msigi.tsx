@@ -208,36 +208,52 @@ export function MsigiPDF(props: MsigiPDFProps) {
         <Footer id={reportId} />
       </Page>
 
-      {/* SATELLITE MAP */}
-      {terrain_image && (
-        <View style={styles.body}>
-          <Text style={styles.secHead}>TERRAIN — USGS 3DEP LiDAR</Text>
-          <Image src={terrain_image} style={{ width:'100%', height:280, borderRadius:4, marginBottom:8 }} />
-          <Text style={styles.muted}>USGS 3DEP terrain elevation. gist_earth colormap. Hillshade relief rendering.</Text>
-        </View>
-      )}
-
-      {ndvi_image && (
-        <View style={styles.body}>
-          <Text style={styles.secHead}>NDVI SIGNAL MAP — Sentinel-2</Text>
-          <Image src={ndvi_image} style={{ width:'100%', height:280, borderRadius:4, marginBottom:8 }} />
-          <Text style={styles.muted}>NDVI signal by candidate location. RdYlGn colormap. Score composite: DEM×0.60 + S2_NDVI×0.25 + S1_SAR×0.15.</Text>
-        </View>
+      {/* SECTION 3 — SPATIAL MAPS */}
+      {(terrain_image || ndvi_image || map_image) && (
+        <Page size="LETTER" style={styles.page}>
+          <Header title={location} date={today} />
+          <View style={styles.body}>
+            <Text style={styles.secHead}>Section 3 — Spatial Intelligence Maps</Text>
+            {terrain_image && (
+              <>
+                <Text style={styles.h3}>Terrain — USGS 3DEP LiDAR</Text>
+                <Text style={[styles.muted, { marginBottom:6 }]}>
+                  USGS 3DEP elevation rendered with gist_earth colormap and hillshade relief.
+                  Elevation range reflects bare-earth surface model within scan AOI.
+                </Text>
+                <Image src={terrain_image} style={{ width:'100%', height:220, borderRadius:4, marginBottom:10 }} />
+              </>
+            )}
+            {ndvi_image && (
+              <>
+                <Text style={styles.h3}>NDVI Signal Map — Sentinel-2</Text>
+                <Text style={[styles.muted, { marginBottom:6 }]}>
+                  Normalized Difference Vegetation Index. RdYlGn colormap.
+                  Score composite: DEM×0.60 + S2_NDVI×0.25 + S1_SAR×0.15.
+                  Low NDVI (bare soil) correlates with elevated anomaly signal.
+                </Text>
+                <Image src={ndvi_image} style={{ width:'100%', height:220, borderRadius:4, marginBottom:10 }} />
+              </>
+            )}
+          </View>
+          <Footer id={reportId} />
+        </Page>
       )}
 
       {map_image && (
         <Page size="LETTER" style={styles.page}>
           <Header title={location} date={today} />
           <View style={styles.body}>
-            <Text style={styles.secHead}>Section 3 — Satellite Intelligence Map</Text>
+            <Text style={styles.secHead}>Section 4 — Satellite Intelligence Map</Text>
             <Text style={[styles.muted, { marginBottom:10 }]}>
-              Mapbox satellite imagery with MSIGI anomaly candidate markers. Top candidates plotted A–E by composite score.
-              Coordinates: {lat.toFixed(5)}°N, {Math.abs(lng).toFixed(5)}°W · Zoom 14 · Source: Mapbox Satellite Streets v12
+              Mapbox Satellite Streets v12. MSIGI anomaly candidate markers plotted A–E by composite score.
+              Map extent matches AOI bounding box when rectangle AOI used; otherwise centered at scan coordinates.
+              Coordinates: {lat.toFixed(5)}°N, {Math.abs(lng).toFixed(5)}°W · Source: Mapbox Satellite Streets v12
             </Text>
-            <Image src={map_image} style={{ width:'100%', height:280, borderRadius:4, marginBottom:8 }} />
+            <Image src={map_image} style={{ width:'100%', height:300, borderRadius:4, marginBottom:8 }} />
             <Text style={styles.muted}>
-              Markers indicate DBSCAN anomaly candidates. Score composite: DEM×0.60 + NDVI×0.25 + SAR×0.15.
-              Field verification required before drawing conclusions.
+              Candidate markers: DBSCAN clusters (eps=35m). Score composite: DEM×0.60 + NDVI×0.25 + SAR×0.15.
+              Field verification required before drawing conclusions from remote sensing data.
             </Text>
           </View>
           <Footer id={reportId} />
@@ -248,7 +264,7 @@ export function MsigiPDF(props: MsigiPDFProps) {
       <Page size="LETTER" style={styles.page}>
         <Header title={location} date={today} />
         <View style={styles.body}>
-          <Text style={styles.secHead}>Section 4 — ASTRA Core Layer Interpretation</Text>
+          <Text style={styles.secHead}>Section 5 — ASTRA Core Layer Interpretation</Text>
           <Text style={[styles.muted, { marginBottom:12 }]}>
             ASTRA CORE intelligence layer analysis — 20-domain knowledge system · LOCUS reasoning · STRATUM indexed
           </Text>
@@ -265,7 +281,7 @@ export function MsigiPDF(props: MsigiPDFProps) {
       <Page size="LETTER" style={styles.page}>
         <Header title={location} date={today} />
         <View style={styles.body}>
-          <Text style={styles.secHead}>Section 5 — Analyst Notes & Methodology</Text>
+          <Text style={styles.secHead}>Section 6 — Analyst Notes & Methodology</Text>
           {notes && (
             <>
               <Text style={styles.h3}>Analyst Notes</Text>
