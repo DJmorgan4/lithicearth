@@ -123,6 +123,23 @@ Close with an MSIGI SYNTHESIS — what the full multi-sensor picture indicates a
       console.error('Static map fetch failed:', e)
     }
 
+    // Fetch terrain + NDVI map images from LithicEarth engine
+    let terrainImageBase64 = ''
+    let ndviImageBase64 = ''
+    try {
+      const GEO_API = process.env.NEXT_PUBLIC_GEO_API || 'https://lithicearth-production.up.railway.app'
+      const mapsRes = await fetch(`${GEO_API}/maps?lat=${lat}&lng=${lng}&radius_m=1000`, {
+        signal: AbortSignal.timeout(30000)
+      })
+      if (mapsRes.ok) {
+        const mapsData = await mapsRes.json()
+        if (mapsData.terrain) terrainImageBase64 = `data:image/png;base64,${mapsData.terrain}`
+        if (mapsData.ndvi) ndviImageBase64 = `data:image/png;base64,${mapsData.ndvi}`
+      }
+    } catch (e) {
+      console.error('Maps fetch failed:', e)
+    }
+
     return NextResponse.json({
       scan: scanData,
       astra_interpretation: astraInterpretation,
@@ -130,6 +147,8 @@ Close with an MSIGI SYNTHESIS — what the full multi-sensor picture indicates a
       location: { lat, lng, address: location },
       generated_at: new Date().toISOString(),
       map_image: mapImageBase64,
+      terrain_image: terrainImageBase64,
+      ndvi_image: ndviImageBase64,
     })
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 })

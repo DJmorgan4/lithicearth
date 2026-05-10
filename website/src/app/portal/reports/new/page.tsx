@@ -55,6 +55,8 @@ function NewReportInner() {
   const [reportData, setReportData] = useState<any>(null)
   const [showCandidates, setShowCandidates] = useState(false)
   const [mapImage, setMapImage] = useState<string>('')
+  const [terrainImage, setTerrainImage] = useState<string>('')
+  const [ndviImage, setNdviImage] = useState<string>('')
   const [error, setError] = useState('')
   const [phase, setPhase] = useState('')
 
@@ -79,6 +81,8 @@ function NewReportInner() {
       if (data.error) throw new Error(data.error)
       setReportData(data)
       if (data.map_image) setMapImage(data.map_image)
+      if (data.terrain_image) setTerrainImage(data.terrain_image)
+      if (data.ndvi_image) setNdviImage(data.ndvi_image)
     } catch (e: any) {
       setError(e.message || 'Generation failed')
     } finally {
@@ -104,6 +108,8 @@ function NewReportInner() {
           scan: reportData.scan,
           astra_interpretation: reportData.astra_interpretation,
           map_image: mapImage || undefined,
+          terrain_image: terrainImage || undefined,
+          ndvi_image: ndviImage || undefined,
         }),
       })
       if (!res.ok) throw new Error(await res.text())

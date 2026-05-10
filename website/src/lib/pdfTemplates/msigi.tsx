@@ -80,10 +80,12 @@ export interface MsigiPDFProps {
   }
   astra_interpretation: string
   map_image?: string
+  terrain_image?: string
+  ndvi_image?: string
 }
 
 export function MsigiPDF(props: MsigiPDFProps) {
-  const { lat, lng, location, reportType, activeLayers, notes, generated_at, scan, astra_interpretation, map_image } = props
+  const { lat, lng, location, reportType, activeLayers, notes, generated_at, scan, astra_interpretation, map_image, terrain_image, ndvi_image } = props
   const today = new Date(generated_at).toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' })
   const reportId = `LE-MSIGI-${new Date(generated_at).getFullYear()}-${Date.now().toString().slice(-6)}`
   const t = scan?.terrain
@@ -207,6 +209,22 @@ export function MsigiPDF(props: MsigiPDFProps) {
       </Page>
 
       {/* SATELLITE MAP */}
+      {terrain_image && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>TERRAIN — USGS 3DEP LiDAR</Text>
+          <Image src={terrain_image} style={{ width:'100%', height:280, borderRadius:4, marginBottom:8 }} />
+          <Text style={styles.caption}>USGS 3DEP terrain elevation. gist_earth colormap. Hillshade relief rendering.</Text>
+        </View>
+      )}
+
+      {ndvi_image && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>NDVI SIGNAL MAP — Sentinel-2</Text>
+          <Image src={ndvi_image} style={{ width:'100%', height:280, borderRadius:4, marginBottom:8 }} />
+          <Text style={styles.caption}>NDVI signal by candidate location. RdYlGn colormap. Score composite: DEM×0.60 + S2_NDVI×0.25 + S1_SAR×0.15.</Text>
+        </View>
+      )}
+
       {map_image && (
         <Page size="LETTER" style={styles.page}>
           <Header title={location} date={today} />
