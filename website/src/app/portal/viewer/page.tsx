@@ -134,284 +134,31 @@ interface ScanData {
 }
 
 // ── Layer definitions ──────────────────────────────────────────────────
-const LAYER_DEFS: LayerDef[] = [
-  {
-    id: 'satellite',
-    label: 'Satellite Imagery',
-    group: 'Base',
-    color: '#38bdf8',
-    tileUrl: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    opacity: 1,
-    active: true,
-    source: 'Esri World Imagery',
-    available: true,
-  },
-  {
-    id: 'terrain',
-    label: 'Terrain / Hillshade',
-    group: 'Base',
-    color: '#fb923c',
-    tileUrl: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Shaded_Relief/MapServer/tile/{z}/{y}/{x}',
-    opacity: 0.6,
-    active: false,
-    source: 'Esri World Shaded Relief',
-    available: true,
-  },
-  {
-    id: 'hydro',
-    label: 'Hydrology / NHD',
-    group: 'Environmental',
-    color: '#06b6d4',
-    wmsUrl: 'https://hydro.nationalmap.gov/arcgis/services/NHDPlus_HR/MapServer/WMSServer',
-    wmsLayer: 'NHDFlowline',
-    opacity: 0.8,
-    active: false,
-    source: 'USGS NHD',
-    available: true,
-  },
-  {
-    id: 'fema',
-    label: 'FEMA Floodplain',
-    group: 'Environmental',
-    color: '#4ade80',
-    wmsUrl: 'https://hazards.fema.gov/gis/nfhl/services/public/NFHL/MapServer/WMSServer',
-    wmsLayer: '28',
-    opacity: 0.65,
-    active: false,
-    source: 'FEMA NFHL',
-    available: true,
-  },
-  {
-    id: 'nwi',
-    label: 'Wetlands (NWI)',
-    group: 'Environmental',
-    color: '#34d399',
-    wmsUrl: 'https://www.fws.gov/wetlandsmapper/rest/services/Wetlands/MapServer/WMSServer',
-    wmsLayer: '0',
-    opacity: 0.7,
-    active: false,
-    source: 'USFWS NWI',
-    available: true,
-  },
-  {
-    id: 'geology',
-    label: 'Geologic Map',
-    group: 'Geophysical',
-    color: '#a78bfa',
-    wmsUrl: 'https://mrdata.usgs.gov/geology/state/wms.php',
-    wmsLayer: 'geol_bg',
-    opacity: 0.55,
-    active: false,
-    source: 'USGS State Geologic Maps',
-    available: true,
-  },
-  {
-    id: 'topo',
-    label: 'USGS Topo',
-    group: 'Base',
-    color: '#fbbf24',
-    tileUrl: 'https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}', // maxZoom 16
-    opacity: 0.7,
-    active: false,
-    source: 'USGS National Map',
-    available: true,
-  },
-  {
-    id: 'lidar',
-    label: 'LiDAR Bare Earth',
-    group: 'Geophysical',
-    color: '#f59e0b',
-    tileUrl: 'https://index.nationalmap.gov/arcgis/rest/services/3DEPElevationIndex/MapServer/tile/{z}/{y}/{x}',
-    opacity: 0.7,
-    active: false,
-    source: 'USGS 3DEP LiDAR Index',
-    available: true,
-  },
-  {
-    id: 'lidar_hs',
-    label: 'LiDAR Hillshade',
-    group: 'Geophysical',
-    color: '#fcd34d',
-    wmsUrl: 'https://elevation.nationalmap.gov/arcgis/services/3DEPElevation/ImageServer/WMSServer',
-    wmsLayer: '3DEPElevation:Hillshade Gray',
-    opacity: 0.6,
-    active: false,
-    source: 'USGS 3DEP Elevation',
-    available: true,
-  },
-  {
-    id: 'lidar_1m',
-    label: 'LiDAR 1m (High Res)',
-    group: 'Geophysical',
-    color: '#f97316',
-    wmsUrl: 'https://elevation.nationalmap.gov/arcgis/services/3DEPElevation/ImageServer/WMSServer',
-    wmsLayer: '3DEPElevation:Hillshade Multidirectional',
-    opacity: 0.7,
-    active: false,
-    source: 'USGS 3DEP 1m LiDAR',
-    available: true,
-  },
-  {
-    id: 'cdse_ndvi',
-    label: 'NDVI (Live S2)',
-    group: 'Spectral',
-    color: '#86efac',
-    wmsUrl: 'https://sh.dataspace.copernicus.eu/ogc/wms/19beb6e6-941f-4716-aa8e-52f78bb315c1',
-    wmsLayer: 'NDVI',
-    opacity: 0.75,
-    active: false,
-    source: 'Copernicus S2 L2A',
-    available: true,
-    cdseAuth: true,
-  },
-  {
-    id: 'cdse_false_color',
-    label: 'False Color (Vegetation)',
-    group: 'Spectral',
-    color: '#4ade80',
-    wmsUrl: 'https://sh.dataspace.copernicus.eu/ogc/wms/19beb6e6-941f-4716-aa8e-52f78bb315c1',
-    wmsLayer: 'FALSE_COLOR',
-    opacity: 0.75,
-    active: false,
-    source: 'Copernicus S2 L2A',
-    available: true,
-    cdseAuth: true,
-  },
-  {
-    id: 'cdse_swir',
-    label: 'SWIR',
-    group: 'Spectral',
-    color: '#f97316',
-    wmsUrl: 'https://sh.dataspace.copernicus.eu/ogc/wms/19beb6e6-941f-4716-aa8e-52f78bb315c1',
-    wmsLayer: 'SWIR',
-    opacity: 0.75,
-    active: false,
-    source: 'Copernicus S2 L2A',
-    available: true,
-    cdseAuth: true,
-  },
-  {
-    id: 'cdse_geology',
-    label: 'Geology (S2)',
-    group: 'Geophysical',
-    color: '#a78bfa',
-    wmsUrl: 'https://sh.dataspace.copernicus.eu/ogc/wms/19beb6e6-941f-4716-aa8e-52f78bb315c1',
-    wmsLayer: 'GEOLOGY',
-    opacity: 0.75,
-    active: false,
-    source: 'Copernicus S2 L2A',
-    available: true,
-    cdseAuth: true,
-  },
-  {
-    id: 'cdse_sar_vv',
-    label: 'SAR IW-VV dB (Live)',
-    group: 'Radar',
-    color: '#4ade80',
-    wmsUrl: 'https://sh.dataspace.copernicus.eu/ogc/wms/38df2b92-62bd-4b7d-a4db-94f011c7b386',
-    wmsLayer: 'IW_VV_DB',
-    opacity: 0.9,
-    active: false,
-    source: 'Copernicus S1 GRD',
-    available: true,
-    cdseAuth: true,
-  },
-  {
-    id: 'cdse_sar_vh',
-    label: 'SAR IW-VH dB (Live)',
-    group: 'Radar',
-    color: '#86efac',
-    wmsUrl: 'https://sh.dataspace.copernicus.eu/ogc/wms/38df2b92-62bd-4b7d-a4db-94f011c7b386',
-    wmsLayer: 'IW-VH-DB',
-    opacity: 0.9,
-    active: false,
-    source: 'Copernicus S1 GRD',
-    available: true,
-    cdseAuth: true,
-  },
-  {
-    id: 'cdse_sar_vv',
-    label: 'SAR VV dB (Live)',
-    group: 'Radar',
-    color: '#4ade80',
-    wmsUrl: 'https://sh.dataspace.copernicus.eu/ogc/wms/38df2b92-62bd-4b7d-a4db-94f011c7b386',
-    wmsLayer: 'IW_VV_DB',
-    opacity: 0.9,
-    active: false,
-    source: 'Copernicus S1 IW',
-    available: true,
-    cdseAuth: true,
-  },
-  {
-    id: 'cdse_sar_vh',
-    label: 'SAR VH dB (Live)',
-    group: 'Radar',
-    color: '#86efac',
-    wmsUrl: 'https://sh.dataspace.copernicus.eu/ogc/wms/38df2b92-62bd-4b7d-a4db-94f011c7b386',
-    wmsLayer: 'IW-VH-DB',
-    opacity: 0.9,
-    active: false,
-    source: 'Copernicus S1 IW',
-    available: true,
-    cdseAuth: true,
-  },
-  {
-    id: 'cdse_ndwi',
-    label: 'NDWI (Water Index)',
-    group: 'Spectral',
-    color: '#0ea5e9',
-    wmsUrl: 'https://sh.dataspace.copernicus.eu/ogc/wms/19beb6e6-941f-4716-aa8e-52f78bb315c1',
-    wmsLayer: 'NDWI',
-    opacity: 0.75,
-    active: false,
-    source: 'Copernicus S2 L2A',
-    available: true,
-    cdseAuth: true,
-  },
-  {
-    id: 'cdse_moisture',
-    label: 'Moisture Index',
-    group: 'Spectral',
-    color: '#38bdf8',
-    wmsUrl: 'https://sh.dataspace.copernicus.eu/ogc/wms/19beb6e6-941f-4716-aa8e-52f78bb315c1',
-    wmsLayer: 'MOISTURE_INDEX',
-    opacity: 0.75,
-    active: false,
-    source: 'Copernicus S2 L2A',
-    available: true,
-    cdseAuth: true,
-  },
-  {
-    id: 'sar',
-    label: 'SAR / Radar',
-    group: 'Radar',
-    color: '#4ade80',
-    opacity: 0.7,
-    active: false,
-    source: 'Sentinel-1 — point readout only',
-    available: false,
-  },
-  {
-    id: 'ndvi',
-    label: 'NDVI Vegetation',
-    group: 'Spectral',
-    color: '#86efac',
-    opacity: 0.75,
-    active: false,
-    source: 'Sentinel-2 — point readout only',
-    available: false,
-  },
-  {
-    id: 'thermal',
-    label: 'Thermal IR',
-    group: 'Thermal',
-    color: '#f87171',
-    opacity: 0.7,
-    active: false,
-    source: 'Landsat-9 — point readout only',
-    available: false,
-  },
-]
+const LAYER_DEFS: LayerDef[] = [{
+    id: 'satellite', label: 'Satellite Imagery', group: 'Base', color: '#38bdf8', tileUrl: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', opacity: 1, active: true, source: 'Esri World Imagery', available: true, }, {
+    id: 'terrain', label: 'Terrain / Hillshade', group: 'Base', color: '#fb923c', tileUrl: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Shaded_Relief/MapServer/tile/{z}/{y}/{x}', opacity: 0.6, active: false, source: 'Esri World Shaded Relief', available: true, }, {
+    id: 'hydro', label: 'Hydrology / NHD', group: 'Environmental', color: '#06b6d4', wmsUrl: 'https://hydro.nationalmap.gov/arcgis/services/NHDPlus_HR/MapServer/WMSServer', wmsLayer: 'NHDFlowline', opacity: 0.8, active: false, source: 'USGS NHD', available: true, }, {
+    id: 'fema', label: 'FEMA Floodplain', group: 'Environmental', color: '#4ade80', wmsUrl: 'https://hazards.fema.gov/gis/nfhl/services/public/NFHL/MapServer/WMSServer', wmsLayer: '28', opacity: 0.65, active: false, source: 'FEMA NFHL', available: true, }, {
+    id: 'nwi', label: 'Wetlands (NWI)', group: 'Environmental', color: '#34d399', wmsUrl: 'https://www.fws.gov/wetlandsmapper/rest/services/Wetlands/MapServer/WMSServer', wmsLayer: '0', opacity: 0.7, active: false, source: 'USFWS NWI', available: true, }, {
+    id: 'geology', label: 'Geologic Map', group: 'Geophysical', color: '#a78bfa', wmsUrl: 'https://mrdata.usgs.gov/geology/state/wms.php', wmsLayer: 'geol_bg', opacity: 0.55, active: false, source: 'USGS State Geologic Maps', available: true, }, {
+    id: 'topo', label: 'USGS Topo', group: 'Base', color: '#fbbf24', tileUrl: 'https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}', // maxZoom 16
+    opacity: 0.7, active: false, source: 'USGS National Map', available: true, }, {
+    id: 'lidar', label: 'LiDAR Bare Earth', group: 'Geophysical', color: '#f59e0b', tileUrl: 'https://index.nationalmap.gov/arcgis/rest/services/3DEPElevationIndex/MapServer/tile/{z}/{y}/{x}', opacity: 0.7, active: false, source: 'USGS 3DEP LiDAR Index', available: true, }, {
+    id: 'lidar_hs', label: 'LiDAR Hillshade', group: 'Geophysical', color: '#fcd34d', wmsUrl: 'https://elevation.nationalmap.gov/arcgis/services/3DEPElevation/ImageServer/WMSServer', wmsLayer: '3DEPElevation:Hillshade Gray', opacity: 0.6, active: false, source: 'USGS 3DEP Elevation', available: true, }, {
+    id: 'lidar_1m', label: 'LiDAR 1m (High Res)', group: 'Geophysical', color: '#f97316', wmsUrl: 'https://elevation.nationalmap.gov/arcgis/services/3DEPElevation/ImageServer/WMSServer', wmsLayer: '3DEPElevation:Hillshade Multidirectional', opacity: 0.7, active: false, source: 'USGS 3DEP 1m LiDAR', available: true, }, {
+    id: 'cdse_ndvi', label: 'NDVI (Live S2)', group: 'Spectral', color: '#86efac', wmsUrl: 'https://sh.dataspace.copernicus.eu/ogc/wms/19beb6e6-941f-4716-aa8e-52f78bb315c1', wmsLayer: 'NDVI', opacity: 0.75, active: false, source: 'Copernicus S2 L2A', available: true, cdseAuth: true, }, {
+    id: 'cdse_false_color', label: 'False Color (Vegetation)', group: 'Spectral', color: '#4ade80', wmsUrl: 'https://sh.dataspace.copernicus.eu/ogc/wms/19beb6e6-941f-4716-aa8e-52f78bb315c1', wmsLayer: 'FALSE_COLOR', opacity: 0.75, active: false, source: 'Copernicus S2 L2A', available: true, cdseAuth: true, }, {
+    id: 'cdse_swir', label: 'SWIR', group: 'Spectral', color: '#f97316', wmsUrl: 'https://sh.dataspace.copernicus.eu/ogc/wms/19beb6e6-941f-4716-aa8e-52f78bb315c1', wmsLayer: 'SWIR', opacity: 0.75, active: false, source: 'Copernicus S2 L2A', available: true, cdseAuth: true, }, {
+    id: 'cdse_geology', label: 'Geology (S2)', group: 'Geophysical', color: '#a78bfa', wmsUrl: 'https://sh.dataspace.copernicus.eu/ogc/wms/19beb6e6-941f-4716-aa8e-52f78bb315c1', wmsLayer: 'GEOLOGY', opacity: 0.75, active: false, source: 'Copernicus S2 L2A', available: true, cdseAuth: true, }, {
+    id: 'cdse_sar_vv', label: 'SAR IW-VV dB (Live)', group: 'Radar', color: '#4ade80', wmsUrl: 'https://sh.dataspace.copernicus.eu/ogc/wms/38df2b92-62bd-4b7d-a4db-94f011c7b386', wmsLayer: 'IW_VV_DB', opacity: 0.9, active: false, source: 'Copernicus S1 GRD', available: true, cdseAuth: true, }, {
+    id: 'cdse_sar_vh', label: 'SAR IW-VH dB (Live)', group: 'Radar', color: '#86efac', wmsUrl: 'https://sh.dataspace.copernicus.eu/ogc/wms/38df2b92-62bd-4b7d-a4db-94f011c7b386', wmsLayer: 'IW-VH-DB', opacity: 0.9, active: false, source: 'Copernicus S1 GRD', available: true, cdseAuth: true, }, {
+    id: 'cdse_sar_vv', label: 'SAR VV dB (Live)', group: 'Radar', color: '#4ade80', wmsUrl: 'https://sh.dataspace.copernicus.eu/ogc/wms/38df2b92-62bd-4b7d-a4db-94f011c7b386', wmsLayer: 'IW_VV_DB', opacity: 0.9, active: false, source: 'Copernicus S1 IW', available: true, cdseAuth: true, }, {
+    id: 'cdse_sar_vh', label: 'SAR VH dB (Live)', group: 'Radar', color: '#86efac', wmsUrl: 'https://sh.dataspace.copernicus.eu/ogc/wms/38df2b92-62bd-4b7d-a4db-94f011c7b386', wmsLayer: 'IW-VH-DB', opacity: 0.9, active: false, source: 'Copernicus S1 IW', available: true, cdseAuth: true, }, {
+    id: 'cdse_ndwi', label: 'NDWI (Water Index)', group: 'Spectral', color: '#0ea5e9', wmsUrl: 'https://sh.dataspace.copernicus.eu/ogc/wms/19beb6e6-941f-4716-aa8e-52f78bb315c1', wmsLayer: 'NDWI', opacity: 0.75, active: false, source: 'Copernicus S2 L2A', available: true, cdseAuth: true, }, {
+    id: 'cdse_moisture', label: 'Moisture Index', group: 'Spectral', color: '#38bdf8', wmsUrl: 'https://sh.dataspace.copernicus.eu/ogc/wms/19beb6e6-941f-4716-aa8e-52f78bb315c1', wmsLayer: 'MOISTURE_INDEX', opacity: 0.75, active: false, source: 'Copernicus S2 L2A', available: true, cdseAuth: true, }, {
+    id: 'sar', label: 'SAR / Radar', group: 'Radar', color: '#4ade80', opacity: 0.7, active: false, source: 'Sentinel-1 — point readout only', available: false, }, {
+    id: 'ndvi', label: 'NDVI Vegetation', group: 'Spectral', color: '#86efac', opacity: 0.75, active: false, source: 'Sentinel-2 — point readout only', available: false, }, {
+    id: 'thermal', label: 'Thermal IR', group: 'Thermal', color: '#f87171', opacity: 0.7, active: false, source: 'Landsat-9 — point readout only', available: false, }]
 
 const GROUPS = ['Base', 'Environmental', 'Geophysical', 'Radar', 'Spectral', 'Thermal']
 // Note: Radar/Spectral/Thermal are point-readout only via Lithic Engine
@@ -421,69 +168,6 @@ function ReadoutRow({ label, value, sub, accent }: {
   label: string; value: string; sub?: string; accent?: string
 }) {
 
-  useEffect(() => {
-    if (!webglOverlay || !scan?.candidates?.length) return
-
-    let raf = 0
-    const canvas = webglCanvasRef.current
-    const map = leafletRef.current
-    if (!canvas || !map) return
-
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-
-    const resize = () => {
-      const rect = canvas.parentElement?.getBoundingClientRect()
-      if (!rect) return
-      canvas.width = rect.width
-      canvas.height = rect.height
-    }
-
-    resize()
-
-    const draw = (time: number) => {
-      resize()
-      ctx.clearRect(0, 0, canvas.width, canvas.height)
-
-      scan.candidates.forEach((c) => {
-        const point = map.latLngToContainerPoint([c.lat, c.lng])
-        const pulse = 1 + Math.sin(time / 500 + c.score * 10) * 0.25
-        const radius = Math.max(20, c.diameter_m * 0.6) * pulse
-        const alpha = Math.min(0.35, Math.max(0.08, c.score * 0.35))
-
-        const gradient = ctx.createRadialGradient(
-          point.x,
-          point.y,
-          0,
-          point.x,
-          point.y,
-          radius
-        )
-
-        const color =
-          c.score > 0.7
-            ? '239,68,68'
-            : c.score > 0.4
-              ? '245,158,11'
-              : '91,124,111'
-
-        gradient.addColorStop(0, `rgba(${color},${alpha})`)
-        gradient.addColorStop(0.5, `rgba(${color},${alpha * 0.35})`)
-        gradient.addColorStop(1, `rgba(${color},0)`)
-
-        ctx.fillStyle = gradient
-        ctx.beginPath()
-        ctx.arc(point.x, point.y, radius, 0, Math.PI * 2)
-        ctx.fill()
-      })
-
-      raf = requestAnimationFrame(draw)
-    }
-
-    raf = requestAnimationFrame(draw)
-
-    return () => cancelAnimationFrame(raf)
-  }, [webglOverlay, scan])
 
   return (
     <div className="flex items-baseline justify-between gap-2 py-1.5 border-b border-[#1a2a1e] last:border-0">
@@ -567,7 +251,7 @@ function ViewerInner() {
     polygonPointsRef.current = []
     aoiGuideLayerRef.current?.remove()
     aoiGuideLayerRef.current = null
-  }, [clusterCandidates])
+  }, [])
 
   const redrawAOI = useCallback(async (geometry: AOIGeometry) => {
     const L = (await import('leaflet')).default
@@ -590,7 +274,7 @@ function ViewerInner() {
     }
 
     const ring = geometry.coordinates[0]
-    const latlngs = ring.map(([lng, lat]) => [lat, lng])
+    const latlngs = ring.map(([lng, lat]) => [lat, lng] as [number, number])
     aoiLayerRef.current = L.polygon(latlngs, {
       color: '#D4AF37',
       weight: 2,
@@ -609,7 +293,7 @@ function ViewerInner() {
     const z = leafletRef.current?.getZoom?.() ?? zoom
     router.replace(`/portal/viewer?lat=${center.lat}&lng=${center.lng}&zoom=${z}`, { scroll: false })
     rememberAOI(geometry, center)
-  }, [fetchIntel, fetchScan, redrawAOI, rememberAOI, router, zoom])
+  }, [redrawAOI, router, zoom])
 
   const saveAOI = useCallback(async () => {
     if (!aoiGeometry) return
@@ -797,7 +481,7 @@ function ViewerInner() {
 
       setTerrainProfile(points)
     }
-  }, [elev?.value])
+  }, [])
 
   // ── Fetch intel from engine ──────────────────────────────────────────
   const fetchIntel = useCallback(async (lat: number, lng: number) => {
@@ -942,8 +626,7 @@ function ViewerInner() {
           const L = (await import('leaflet')).default
 
           L.polyline(
-            [
-              [start.lat, start.lng],
+            [[start.lat, start.lng],
               [safe.lat, safe.lng]
             ],
             {
@@ -975,8 +658,7 @@ function ViewerInner() {
           const east = Math.max(start.lng, safe.lng)
           const south = Math.min(start.lat, safe.lat)
           const north = Math.max(start.lat, safe.lat)
-          const ring: [number, number][] = [
-            [west, south],
+          const ring: [number, number][] = [[west, south],
             [east, south],
             [east, north],
             [west, north],
@@ -1096,26 +778,10 @@ function ViewerInner() {
   const thermal = intel?.measurements?.thermal
   const s2meta = intel?.measurements?.sentinel2_meta
 
-  const temporalScenes = [
-    {
-      label: 'Past',
-      date: '2021-08-14',
-      ndvi: 0.41,
-      cloud: 12,
-    },
-    {
-      label: 'Current',
-      date: s2meta?.date?.slice(0, 10) ?? '2025-05-10',
-      ndvi: ndvi?.value ?? 0.58,
-      cloud: s2meta?.cloud_cover ?? 4,
-    },
-    {
-      label: 'Projected',
-      date: '2026-03-22',
-      ndvi: ((ndvi?.value ?? 0.58) + 0.06),
-      cloud: 6,
-    },
-  ]
+  const temporalScenes = [{
+      label: 'Past', date: '2021-08-14', ndvi: 0.41, cloud: 12, }, {
+      label: 'Current', date: s2meta?.date?.slice(0, 10) ?? '2025-05-10', ndvi: ndvi?.value ?? 0.58, cloud: s2meta?.cloud_cover ?? 4, }, {
+      label: 'Projected', date: '2026-03-22', ndvi: ((ndvi?.value ?? 0.58) + 0.06), cloud: 6, }]
 
   const ndviDelta =
     temporalScenes[1].ndvi - temporalScenes[0].ndvi
@@ -1131,69 +797,6 @@ function ViewerInner() {
   }, [loadSavedAOIs])
 
 
-  useEffect(() => {
-    if (!webglOverlay || !scan?.candidates?.length) return
-
-    let raf = 0
-    const canvas = webglCanvasRef.current
-    const map = leafletRef.current
-    if (!canvas || !map) return
-
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-
-    const resize = () => {
-      const rect = canvas.parentElement?.getBoundingClientRect()
-      if (!rect) return
-      canvas.width = rect.width
-      canvas.height = rect.height
-    }
-
-    resize()
-
-    const draw = (time: number) => {
-      resize()
-      ctx.clearRect(0, 0, canvas.width, canvas.height)
-
-      scan.candidates.forEach((c) => {
-        const point = map.latLngToContainerPoint([c.lat, c.lng])
-        const pulse = 1 + Math.sin(time / 500 + c.score * 10) * 0.25
-        const radius = Math.max(20, c.diameter_m * 0.6) * pulse
-        const alpha = Math.min(0.35, Math.max(0.08, c.score * 0.35))
-
-        const gradient = ctx.createRadialGradient(
-          point.x,
-          point.y,
-          0,
-          point.x,
-          point.y,
-          radius
-        )
-
-        const color =
-          c.score > 0.7
-            ? '239,68,68'
-            : c.score > 0.4
-              ? '245,158,11'
-              : '91,124,111'
-
-        gradient.addColorStop(0, `rgba(${color},${alpha})`)
-        gradient.addColorStop(0.5, `rgba(${color},${alpha * 0.35})`)
-        gradient.addColorStop(1, `rgba(${color},0)`)
-
-        ctx.fillStyle = gradient
-        ctx.beginPath()
-        ctx.arc(point.x, point.y, radius, 0, Math.PI * 2)
-        ctx.fill()
-      })
-
-      raf = requestAnimationFrame(draw)
-    }
-
-    raf = requestAnimationFrame(draw)
-
-    return () => cancelAnimationFrame(raf)
-  }, [webglOverlay, scan])
 
   return (
     <div className="flex h-screen bg-[#0a0e0b] overflow-hidden font-light">
@@ -1214,69 +817,6 @@ function ViewerInner() {
               if (!gl.length) return null
               const collapsed = collapsedGroups.has(group)
             
-  useEffect(() => {
-    if (!webglOverlay || !scan?.candidates?.length) return
-
-    let raf = 0
-    const canvas = webglCanvasRef.current
-    const map = leafletRef.current
-    if (!canvas || !map) return
-
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-
-    const resize = () => {
-      const rect = canvas.parentElement?.getBoundingClientRect()
-      if (!rect) return
-      canvas.width = rect.width
-      canvas.height = rect.height
-    }
-
-    resize()
-
-    const draw = (time: number) => {
-      resize()
-      ctx.clearRect(0, 0, canvas.width, canvas.height)
-
-      scan.candidates.forEach((c) => {
-        const point = map.latLngToContainerPoint([c.lat, c.lng])
-        const pulse = 1 + Math.sin(time / 500 + c.score * 10) * 0.25
-        const radius = Math.max(20, c.diameter_m * 0.6) * pulse
-        const alpha = Math.min(0.35, Math.max(0.08, c.score * 0.35))
-
-        const gradient = ctx.createRadialGradient(
-          point.x,
-          point.y,
-          0,
-          point.x,
-          point.y,
-          radius
-        )
-
-        const color =
-          c.score > 0.7
-            ? '239,68,68'
-            : c.score > 0.4
-              ? '245,158,11'
-              : '91,124,111'
-
-        gradient.addColorStop(0, `rgba(${color},${alpha})`)
-        gradient.addColorStop(0.5, `rgba(${color},${alpha * 0.35})`)
-        gradient.addColorStop(1, `rgba(${color},0)`)
-
-        ctx.fillStyle = gradient
-        ctx.beginPath()
-        ctx.arc(point.x, point.y, radius, 0, Math.PI * 2)
-        ctx.fill()
-      })
-
-      raf = requestAnimationFrame(draw)
-    }
-
-    raf = requestAnimationFrame(draw)
-
-    return () => cancelAnimationFrame(raf)
-  }, [webglOverlay, scan])
 
   return (
                 <div key={group}>
@@ -1638,69 +1178,6 @@ function ViewerInner() {
                 {scan.candidates.slice(0, 8).map((c) => {
                   const color = c.score > 0.7 ? '#f87171' : c.score > 0.4 ? '#fbbf24' : '#5b7c6f'
                 
-  useEffect(() => {
-    if (!webglOverlay || !scan?.candidates?.length) return
-
-    let raf = 0
-    const canvas = webglCanvasRef.current
-    const map = leafletRef.current
-    if (!canvas || !map) return
-
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-
-    const resize = () => {
-      const rect = canvas.parentElement?.getBoundingClientRect()
-      if (!rect) return
-      canvas.width = rect.width
-      canvas.height = rect.height
-    }
-
-    resize()
-
-    const draw = (time: number) => {
-      resize()
-      ctx.clearRect(0, 0, canvas.width, canvas.height)
-
-      scan.candidates.forEach((c) => {
-        const point = map.latLngToContainerPoint([c.lat, c.lng])
-        const pulse = 1 + Math.sin(time / 500 + c.score * 10) * 0.25
-        const radius = Math.max(20, c.diameter_m * 0.6) * pulse
-        const alpha = Math.min(0.35, Math.max(0.08, c.score * 0.35))
-
-        const gradient = ctx.createRadialGradient(
-          point.x,
-          point.y,
-          0,
-          point.x,
-          point.y,
-          radius
-        )
-
-        const color =
-          c.score > 0.7
-            ? '239,68,68'
-            : c.score > 0.4
-              ? '245,158,11'
-              : '91,124,111'
-
-        gradient.addColorStop(0, `rgba(${color},${alpha})`)
-        gradient.addColorStop(0.5, `rgba(${color},${alpha * 0.35})`)
-        gradient.addColorStop(1, `rgba(${color},0)`)
-
-        ctx.fillStyle = gradient
-        ctx.beginPath()
-        ctx.arc(point.x, point.y, radius, 0, Math.PI * 2)
-        ctx.fill()
-      })
-
-      raf = requestAnimationFrame(draw)
-    }
-
-    raf = requestAnimationFrame(draw)
-
-    return () => cancelAnimationFrame(raf)
-  }, [webglOverlay, scan])
 
   return (
                     <div key={c.id} className="border-b border-[#1a2a1e] py-2 last:border-0">
@@ -1966,69 +1443,6 @@ function ViewerInner() {
               {scan?.candidates?.slice(0, 5).map((c, i) => {
                 const x = ((i + 1) / 6) * 240
               
-  useEffect(() => {
-    if (!webglOverlay || !scan?.candidates?.length) return
-
-    let raf = 0
-    const canvas = webglCanvasRef.current
-    const map = leafletRef.current
-    if (!canvas || !map) return
-
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-
-    const resize = () => {
-      const rect = canvas.parentElement?.getBoundingClientRect()
-      if (!rect) return
-      canvas.width = rect.width
-      canvas.height = rect.height
-    }
-
-    resize()
-
-    const draw = (time: number) => {
-      resize()
-      ctx.clearRect(0, 0, canvas.width, canvas.height)
-
-      scan.candidates.forEach((c) => {
-        const point = map.latLngToContainerPoint([c.lat, c.lng])
-        const pulse = 1 + Math.sin(time / 500 + c.score * 10) * 0.25
-        const radius = Math.max(20, c.diameter_m * 0.6) * pulse
-        const alpha = Math.min(0.35, Math.max(0.08, c.score * 0.35))
-
-        const gradient = ctx.createRadialGradient(
-          point.x,
-          point.y,
-          0,
-          point.x,
-          point.y,
-          radius
-        )
-
-        const color =
-          c.score > 0.7
-            ? '239,68,68'
-            : c.score > 0.4
-              ? '245,158,11'
-              : '91,124,111'
-
-        gradient.addColorStop(0, `rgba(${color},${alpha})`)
-        gradient.addColorStop(0.5, `rgba(${color},${alpha * 0.35})`)
-        gradient.addColorStop(1, `rgba(${color},0)`)
-
-        ctx.fillStyle = gradient
-        ctx.beginPath()
-        ctx.arc(point.x, point.y, radius, 0, Math.PI * 2)
-        ctx.fill()
-      })
-
-      raf = requestAnimationFrame(draw)
-    }
-
-    raf = requestAnimationFrame(draw)
-
-    return () => cancelAnimationFrame(raf)
-  }, [webglOverlay, scan])
 
   return (
                   <circle
@@ -2094,69 +1508,6 @@ function ViewerInner() {
 // ── Export with Suspense (required for useSearchParams) ────────────────
 export default function ViewerPage() {
 
-  useEffect(() => {
-    if (!webglOverlay || !scan?.candidates?.length) return
-
-    let raf = 0
-    const canvas = webglCanvasRef.current
-    const map = leafletRef.current
-    if (!canvas || !map) return
-
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-
-    const resize = () => {
-      const rect = canvas.parentElement?.getBoundingClientRect()
-      if (!rect) return
-      canvas.width = rect.width
-      canvas.height = rect.height
-    }
-
-    resize()
-
-    const draw = (time: number) => {
-      resize()
-      ctx.clearRect(0, 0, canvas.width, canvas.height)
-
-      scan.candidates.forEach((c) => {
-        const point = map.latLngToContainerPoint([c.lat, c.lng])
-        const pulse = 1 + Math.sin(time / 500 + c.score * 10) * 0.25
-        const radius = Math.max(20, c.diameter_m * 0.6) * pulse
-        const alpha = Math.min(0.35, Math.max(0.08, c.score * 0.35))
-
-        const gradient = ctx.createRadialGradient(
-          point.x,
-          point.y,
-          0,
-          point.x,
-          point.y,
-          radius
-        )
-
-        const color =
-          c.score > 0.7
-            ? '239,68,68'
-            : c.score > 0.4
-              ? '245,158,11'
-              : '91,124,111'
-
-        gradient.addColorStop(0, `rgba(${color},${alpha})`)
-        gradient.addColorStop(0.5, `rgba(${color},${alpha * 0.35})`)
-        gradient.addColorStop(1, `rgba(${color},0)`)
-
-        ctx.fillStyle = gradient
-        ctx.beginPath()
-        ctx.arc(point.x, point.y, radius, 0, Math.PI * 2)
-        ctx.fill()
-      })
-
-      raf = requestAnimationFrame(draw)
-    }
-
-    raf = requestAnimationFrame(draw)
-
-    return () => cancelAnimationFrame(raf)
-  }, [webglOverlay, scan])
 
   return (
     <Suspense fallback={

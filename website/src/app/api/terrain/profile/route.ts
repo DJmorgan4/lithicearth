@@ -77,9 +77,9 @@ async function sampleTerrainRGB(lat: number, lng: number, z = 12) {
   const arrayBuffer = await res.arrayBuffer()
   const png = PNG.sync.read(Buffer.from(arrayBuffer))
 
-  const x = Math.max(0, Math.min(255, pixelX))
-  const y = Math.max(0, Math.min(255, pixelY))
-  const idx = (png.width * y + x) * 4
+  const clampedPixelX = Math.max(0, Math.min(255, pixelX))
+  const clampedPixelY = Math.max(0, Math.min(255, pixelY))
+  const idx = (png.width * clampedPixelY + clampedPixelX) * 4
 
   const r = png.data[idx]
   const g = png.data[idx + 1]
