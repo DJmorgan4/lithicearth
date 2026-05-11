@@ -121,7 +121,6 @@ function NewReportInner() {
           map_image: mapImage || undefined,
           terrain_image: terrainImage || undefined,
           ndvi_image: ndviImage || undefined,
-          aoi: aoiGeometry || undefined,
         }),
       })
       if (!res.ok) throw new Error(await res.text())
