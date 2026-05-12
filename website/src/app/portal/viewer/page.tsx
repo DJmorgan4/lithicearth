@@ -152,8 +152,8 @@ const LAYER_DEFS: LayerDef[] = [{
     id: 'cdse_false_color', label: 'False Color (Vegetation)', group: 'Spectral', color: '#4ade80', wmsUrl: 'https://sh.dataspace.copernicus.eu/ogc/wms/19beb6e6-941f-4716-aa8e-52f78bb315c1', wmsLayer: 'FALSE_COLOR', opacity: 0.75, active: false, source: 'Copernicus S2 L2A', available: true, cdseAuth: true, }, {
     id: 'cdse_swir', label: 'SWIR', group: 'Spectral', color: '#f97316', wmsUrl: 'https://sh.dataspace.copernicus.eu/ogc/wms/19beb6e6-941f-4716-aa8e-52f78bb315c1', wmsLayer: 'SWIR', opacity: 0.75, active: false, source: 'Copernicus S2 L2A', available: true, cdseAuth: true, }, {
     id: 'cdse_geology', label: 'Geology (S2)', group: 'Geophysical', color: '#a78bfa', wmsUrl: 'https://sh.dataspace.copernicus.eu/ogc/wms/19beb6e6-941f-4716-aa8e-52f78bb315c1', wmsLayer: 'GEOLOGY', opacity: 0.75, active: false, source: 'Copernicus S2 L2A', available: true, cdseAuth: true, }, {
-    id: 'cdse_sar_vv', label: 'SAR IW-VV dB (Live)', group: 'Radar', color: '#4ade80', wmsUrl: 'https://sh.dataspace.copernicus.eu/ogc/wms/38df2b92-62bd-4b7d-a4db-94f011c7b386', wmsLayer: 'IW_VV_DB', opacity: 0.9, active: false, source: 'Copernicus S1 GRD', available: true, cdseAuth: true, }, {
-    id: 'cdse_sar_vh', label: 'SAR IW-VH dB (Live)', group: 'Radar', color: '#86efac', wmsUrl: 'https://sh.dataspace.copernicus.eu/ogc/wms/38df2b92-62bd-4b7d-a4db-94f011c7b386', wmsLayer: 'IW-VH-DB', opacity: 0.9, active: false, source: 'Copernicus S1 GRD', available: true, cdseAuth: true, }, {
+    id: 'cdse_sar_iw_vv', label: 'SAR IW-VV dB (Live)', group: 'Radar', color: '#4ade80', wmsUrl: 'https://sh.dataspace.copernicus.eu/ogc/wms/38df2b92-62bd-4b7d-a4db-94f011c7b386', wmsLayer: 'IW_VV_DB', opacity: 0.9, active: false, source: 'Copernicus S1 GRD', available: true, cdseAuth: true, }, {
+    id: 'cdse_sar_iw_vh', label: 'SAR IW-VH dB (Live)', group: 'Radar', color: '#86efac', wmsUrl: 'https://sh.dataspace.copernicus.eu/ogc/wms/38df2b92-62bd-4b7d-a4db-94f011c7b386', wmsLayer: 'IW-VH-DB', opacity: 0.9, active: false, source: 'Copernicus S1 GRD', available: true, cdseAuth: true, }, {
     id: 'cdse_sar_vv', label: 'SAR VV dB (Live)', group: 'Radar', color: '#4ade80', wmsUrl: 'https://sh.dataspace.copernicus.eu/ogc/wms/38df2b92-62bd-4b7d-a4db-94f011c7b386', wmsLayer: 'IW_VV_DB', opacity: 0.9, active: false, source: 'Copernicus S1 IW', available: true, cdseAuth: true, }, {
     id: 'cdse_sar_vh', label: 'SAR VH dB (Live)', group: 'Radar', color: '#86efac', wmsUrl: 'https://sh.dataspace.copernicus.eu/ogc/wms/38df2b92-62bd-4b7d-a4db-94f011c7b386', wmsLayer: 'IW-VH-DB', opacity: 0.9, active: false, source: 'Copernicus S1 IW', available: true, cdseAuth: true, }, {
     id: 'cdse_ndwi', label: 'NDWI (Water Index)', group: 'Spectral', color: '#0ea5e9', wmsUrl: 'https://sh.dataspace.copernicus.eu/ogc/wms/19beb6e6-941f-4716-aa8e-52f78bb315c1', wmsLayer: 'NDWI', opacity: 0.75, active: false, source: 'Copernicus S2 L2A', available: true, cdseAuth: true, }, {
@@ -720,6 +720,7 @@ function ViewerInner() {
 
   // ── Layer toggle ─────────────────────────────────────────────────────
   const toggleLayer = useCallback(async (id: string) => {
+    console.log('[viewer] toggle layer', id)
     const L = (await import('leaflet')).default
     const map = leafletRef.current
     if (!map) return
@@ -733,6 +734,8 @@ function ViewerInner() {
         if (l.tileUrl) {
           const tileMaxZoom = l.id === 'topo' ? 16 : 19
           const tl = L.tileLayer(l.tileUrl, { maxZoom: tileMaxZoom, opacity: l.opacity })
+          tl.on('tileload', () => console.log('[viewer] tile loaded', id))
+          tl.on('tileerror', (e: any) => console.warn('[viewer] tile error', id, e))
           tl.addTo(map)
           layerRefs.current[id] = tl
         } else if (l.wmsUrl && l.wmsLayer) {
@@ -752,6 +755,8 @@ function ViewerInner() {
               transparent: true,
               opacity: l.opacity,
             })
+            wl.on('tileload', () => console.log('[viewer] WMS loaded', id))
+            wl.on('tileerror', (e: any) => console.warn('[viewer] WMS error', id, e))
             wl.addTo(map)
             layerRefs.current[id] = wl
           }
