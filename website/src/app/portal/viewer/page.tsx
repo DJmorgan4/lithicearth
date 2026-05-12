@@ -820,9 +820,8 @@ function ViewerInner() {
               const gl = layers.filter(l => l.group === group)
               if (!gl.length) return null
               const collapsed = collapsedGroups.has(group)
-            
 
-  return (
+              return (
                 <div key={group}>
                   <button
                     onClick={() => toggleGroup(group)}
