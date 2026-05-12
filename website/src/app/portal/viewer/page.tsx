@@ -243,7 +243,9 @@ function ViewerInner() {
   const [timeSlider, setTimeSlider] = useState(50)
   const [temporalMode, setTemporalMode] = useState(false)
   const [webglOverlay, setWebglOverlay] = useState(false)
+  const [intelDrawerOpen, setIntelDrawerOpen] = useState(false)
   const scanLayerRef = useRef<any>(null)
+  const [intelOpen, setIntelOpen] = useState(false)
 
   const setAOIModeSafe = useCallback((mode: AOIMode) => {
     aoiModeRef.current = mode
@@ -904,6 +906,17 @@ function ViewerInner() {
           >−</button>
         </div>
 
+        {/* Mobile intel toggle button */}
+        <button
+          onClick={() => setIntelOpen(v => !v)}
+          className="md:hidden absolute bottom-16 right-4 z-20 bg-[#0b0f0c] border border-[#1a2a1e] px-3 py-2 flex items-center gap-2 hover:border-[#5b7c6f] transition-colors"
+        >
+          <div className="w-1.5 h-1.5 rounded-full bg-[#5b7c6f]" />
+          <span className="text-[#5b7c6f] text-[8px] tracking-[0.2em]">
+            {intelOpen ? 'CLOSE' : 'INTEL'}
+          </span>
+        </button>
+
         {/* Map canvas */}
         <div ref={mapRef} className="w-full h-full" style={{ cursor: 'crosshair' }} />
 
@@ -912,6 +925,31 @@ function ViewerInner() {
             ref={webglCanvasRef}
             className="absolute inset-0 w-full h-full pointer-events-none z-10 mix-blend-screen"
           />
+        )}
+
+
+        <button
+          onClick={() => setIntelDrawerOpen(true)}
+          className="md:hidden fixed bottom-5 right-5 z-40 bg-[#D4AF37] text-black px-4 py-2 text-[10px] tracking-[0.2em] font-light shadow-lg"
+        >
+          INTEL
+        </button>
+
+        {intelDrawerOpen && (
+          <div className="md:hidden fixed inset-x-0 bottom-0 z-50 bg-[#0b0f0c] border-t border-[#D4AF37]/40 max-h-[72vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[#1a2a1e]">
+              <span className="text-[#D4AF37] text-[10px] tracking-[0.3em]">SITE INTEL</span>
+              <button onClick={() => setIntelDrawerOpen(false)} className="text-[#5b7c6f] hover:text-[#D4AF37]">
+                <X size={14} />
+              </button>
+            </div>
+            <div className="p-4">
+              <ReadoutRow label="NDVI" value={intelLoading ? 'loading' : ndvi?.value != null ? ndvi.value.toFixed(3) : '—'} sub={ndvi?.status} accent="#86efac" />
+              <ReadoutRow label="ELEVATION" value={intelLoading ? 'loading' : elev?.value != null ? `${Math.round(elev.value)} m` : '—'} sub={elev?.status} accent="#fbbf24" />
+              <ReadoutRow label="SAR" value={intelLoading ? 'loading' : sar?.value != null ? sar.value.toFixed(2) : '—'} sub={sar?.status} accent="#4ade80" />
+              <ReadoutRow label="THERMAL" value={intelLoading ? 'loading' : thermal?.value != null ? thermal.value.toFixed(2) : '—'} sub={thermal?.status} accent="#f87171" />
+            </div>
+          </div>
         )}
 
         {/* Cursor coords — sanitized, always valid */}
