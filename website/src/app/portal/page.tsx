@@ -24,7 +24,7 @@ export default async function PortalDashboard() {
   const projectCount = projects?.length ?? 0
 
   return (
-    <div className="p-4 md:p-8 min-min-h-screen">
+    <div className="p-4 md:p-8 min-h-screen">
       <div className="mb-10">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-6 h-px bg-[#5b7c6f]" />
@@ -34,7 +34,7 @@ export default async function PortalDashboard() {
         <p className="text-[#3a4a3e] text-sm font-light mt-1">LithicEarth · Ceto Interactive data environment</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-px bg-[#1a2a1e] mb-10">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-px bg-[#1a2a1e] mb-10">
         {[
           { label: 'ACTIVE PROJECTS', value: projectCount },
           { label: 'PUBLIC DATA POINTS', value: postCount },
@@ -48,7 +48,7 @@ export default async function PortalDashboard() {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 md:p-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 md:p-6">
         <div className="col-span-2">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
@@ -101,9 +101,9 @@ export default async function PortalDashboard() {
           </div>
 
           <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-px bg-[#1a2a1e]">
-            <Link href="/portal/globe" className="bg-[#0d1410] px-5 py-4 hover:bg-[#111a14] transition-colors group">
-              <p className="text-[#5b7c6f] text-xs tracking-[0.15em] font-light mb-1 group-hover:text-[#7b9c8f] transition-colors">OPEN GLOBE →</p>
-              <p className="text-[#3a4a3e] text-[10px] font-light">Full layer control + readout</p>
+            <Link href="/portal/viewer" className="bg-[#0d1410] px-5 py-4 hover:bg-[#111a14] transition-colors group">
+              <p className="text-[#5b7c6f] text-xs tracking-[0.15em] font-light mb-1 group-hover:text-[#7b9c8f] transition-colors">​OPEN VIEWER →</p>
+              <p className="text-[#3a4a3e] text-[10px] font-light">Map data, LiDAR, SAR, NDVI + more</p>
             </Link>
             <Link href="/portal/reports/new" className="bg-[#0d1410] px-5 py-4 hover:bg-[#111a14] transition-colors group">
               <p className="text-[#5b7c6f] text-xs tracking-[0.15em] font-light mb-1 group-hover:text-[#7b9c8f] transition-colors">GENERATE REPORT →</p>

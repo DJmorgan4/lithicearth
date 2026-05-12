@@ -801,11 +801,11 @@ function ViewerInner() {
 
 
   return (
-    <div className="flex min-h-screen bg-[#0a0e0b] overflow-hidden font-light">
+    <div className="flex h-screen bg-[#0a0e0b] overflow-hidden font-light">
 
       {/* ── Layer Sidebar ─────────────────────────────────────────────── */}
       {sidebarOpen && (
-        <aside className="w-60 h-full bg-[#0b0f0c] border-r border-[#1a2a1e] flex flex-col z-10 flex-shrink-0">
+        <aside className="fixed md:relative inset-y-0 left-0 w-64 h-full bg-[#0b0f0c] border-r border-[#1a2a1e] flex flex-col z-30 flex-shrink-0 overflow-y-auto">
           <div className="px-4 py-3 border-b border-[#1a2a1e] flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Layers size={11} className="text-[#5b7c6f]" />
@@ -872,11 +872,11 @@ function ViewerInner() {
           </div>
           <div className="px-4 py-3 border-t border-[#1a2a1e]">
             <button
-              onClick={() => router.push('/portal/globe')}
+              onClick={() => router.push('/portal')}
               className="w-full flex items-center gap-2 text-[#3a4a3e] hover:text-[#5b7c6f] transition-colors"
             >
               <ArrowLeft size={10} />
-              <span className="text-[9px] tracking-widest">BACK TO GLOBE</span>
+              <span className="text-[9px] tracking-widest">BACK TO PORTAL</span>
             </button>
           </div>
         </aside>
@@ -936,7 +936,7 @@ function ViewerInner() {
       </div>
 
       {/* ── Intel Panel ───────────────────────────────────────────────── */}
-      <div className="w-full md:w-64 h-full bg-[#0b0f0c] border-l border-[#1a2a1e] flex flex-col z-10 flex-shrink-0">
+      <div className="hidden md:flex md:w-64 h-full bg-[#0b0f0c] border-l border-[#1a2a1e] flex-col z-10 flex-shrink-0">
         <div className="px-4 py-3 border-b border-[#1a2a1e] flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-1.5 h-1.5 rounded-full bg-[#5b7c6f]" />
@@ -1228,7 +1228,7 @@ function ViewerInner() {
         <div className="border-t border-[#1a2a1e] p-3 space-y-2">
           <div className="text-[#5b7c6f] text-[8px] tracking-[0.25em]">AOI MANAGER</div>
 
-          <div className="grid grid-cols-1 md:grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-1">
+          <div className="grid grid-cols-3 gap-1">
             {(['pin', 'rectangle', 'polygon'] as AOIMode[]).map((mode) => (
               <button
                 key={mode}
@@ -1359,7 +1359,7 @@ function ViewerInner() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-1">
+              <div className="grid grid-cols-3 gap-1">
                 {temporalScenes.map((scene) => (
                   <div key={scene.label} className="border border-[#111a14] p-2">
                     <p className="text-[#5b7c6f] text-[7px]">{scene.label}</p>
@@ -1458,7 +1458,7 @@ function ViewerInner() {
               })}
             </svg>
 
-            <div className="grid grid-cols-1 md:grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-1 mt-2">
+            <div className="grid grid-cols-3 gap-1 mt-2">
               <div className="border border-[#111a14] p-2">
                 <p className="text-[#2a3a2e] text-[6px]">MIN</p>
                 <p className="text-[#c8c4ba] text-[9px]">

@@ -4,7 +4,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ReactNode } from 'react';
+import { ReactNode, useState } from 'react';
 
 interface NavigationProps {
   onSignInClick?: () => void;
@@ -14,6 +14,7 @@ interface NavigationProps {
 
 export function Navigation({ onSignInClick, archiveAction }: NavigationProps) {
   const pathname = usePathname();
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const links = [
     { href: '/archive', label: 'Archive' },
@@ -57,8 +58,8 @@ export function Navigation({ onSignInClick, archiveAction }: NavigationProps) {
           </span>
         </Link>
 
-        {/* Links + optional slot + sign in */}
-        <div className="flex items-center gap-7 pointer-events-auto">
+        {/* Desktop links */}
+        <div className="hidden md:flex items-center gap-7 pointer-events-auto">
           {links.map(({ href, label }) => {
             const isActive = pathname === href;
             return (
@@ -86,7 +87,34 @@ export function Navigation({ onSignInClick, archiveAction }: NavigationProps) {
             </button>
           )}
         </div>
+
+        {/* Mobile hamburger */}
+        <button
+          onClick={() => setMenuOpen(v => !v)}
+          className="md:hidden pointer-events-auto flex flex-col gap-1.5 p-2"
+          aria-label="Toggle menu"
+        >
+          <span className="block w-5 h-px transition-all duration-200" style={{ background: menuOpen ? 'rgba(212,175,55,0.8)' : 'rgba(212,175,55,0.5)', transform: menuOpen ? 'rotate(45deg) translateY(4px)' : 'none' }} />
+          <span className="block w-5 h-px transition-all duration-200" style={{ background: 'rgba(212,175,55,0.5)', opacity: menuOpen ? 0 : 1 }} />
+          <span className="block w-5 h-px transition-all duration-200" style={{ background: menuOpen ? 'rgba(212,175,55,0.8)' : 'rgba(212,175,55,0.5)', transform: menuOpen ? 'rotate(-45deg) translateY(-4px)' : 'none' }} />
+        </button>
       </div>
+
+      {/* Mobile menu */}
+      {menuOpen && (
+        <div className="md:hidden pointer-events-auto absolute top-full left-0 right-0 bg-[#020508]/95 border-t border-[#D4AF37]/10 flex flex-col px-6 py-4 gap-4">
+          {links.map(({ href, label }) => (
+            <Link
+              key={href}
+              href={href}
+              onClick={() => setMenuOpen(false)}
+              className="text-[12px] font-light tracking-[0.18em] uppercase text-white/55 hover:text-white/90 transition-colors duration-200"
+            >
+              {label}
+            </Link>
+          ))}
+        </div>
+      )}
     </nav>
   );
 }

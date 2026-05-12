@@ -18,9 +18,9 @@ export default async function PortalLayout({
   }
 
   return (
-    <div className="min-min-h-screen bg-[#0a0e0b] flex flex-col md:flex-row">
-      <aside className="w-full md:w-full md:w-56 md:min-min-h-screen bg-[#0d1410] border-b md:border-b-0 md:border-r border-[#1a2a1e] flex md:flex-col overflow-x-auto md:overflow-visible sticky top-0 z-40">
-        <div className="shrink-0 p-4 md:p-4 md:p-6 border-r md:border-r-0 md:border-b border-[#1a2a1e]">
+    <div className="min-h-screen bg-[#0a0e0b] flex flex-col md:flex-row">
+      <aside className="w-full md:w-56 md:min-h-screen bg-[#0d1410] border-b md:border-b-0 md:border-r border-[#1a2a1e] flex md:flex-col overflow-x-auto md:overflow-visible sticky top-0 z-40">
+        <div className="shrink-0 p-4 md:p-6 border-r md:border-r-0 md:border-b border-[#1a2a1e]">
           <div className="flex items-center gap-2 mb-1">
             <div className="w-4 h-px bg-[#5b7c6f]" />
             <span className="text-[#5b7c6f] text-[10px] tracking-[0.3em] font-light">PORTAL</span>
@@ -30,7 +30,7 @@ export default async function PortalLayout({
 
         <nav className="flex-1 p-3 md:p-4 flex md:flex-col gap-1 md:space-y-1 overflow-x-auto">
           <NavItem href="/portal" icon={<FolderOpen size={14} />} label="Projects" />
-          <NavItem href="/portal/globe" icon={<Globe size={14} />} label="Globe" />
+          <NavItem href="/portal/viewer" icon={<Globe size={14} />} label="Viewer" />
           <NavItem href="/portal/layers" icon={<Layers size={14} />} label="Data Layers" />
           <NavItem href="/portal/reports" icon={<FileText size={14} />} label="Reports" />
         </nav>
@@ -51,7 +51,7 @@ export default async function PortalLayout({
         </div>
       </aside>
 
-      <main className="flex-1 min-w-0 w-full min-min-h-screen overflow-x-hidden">
+      <main className="flex-1 min-w-0 w-full min-h-screen overflow-x-hidden">
         {children}
       </main>
     </div>
