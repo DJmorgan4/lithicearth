@@ -1,3 +1,5 @@
+ 
+ 
 'use client';
 
 import { Suspense, useRef } from 'react';
@@ -53,7 +55,7 @@ function GlobeMesh() {
     // Subtle noise
     const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     for (let i = 0; i < imgData.data.length; i += 4) {
-      const n = (Math.random() - 0.5) * 12;
+      const n = (0.5 - 0.5) * 12;
       imgData.data[i]     = Math.max(0, Math.min(255, imgData.data[i]     + n));
       imgData.data[i + 1] = Math.max(0, Math.min(255, imgData.data[i + 1] + n));
       imgData.data[i + 2] = Math.max(0, Math.min(255, imgData.data[i + 2] + n));

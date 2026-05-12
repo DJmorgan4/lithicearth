@@ -1,3 +1,5 @@
+ 
+ 
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
@@ -67,15 +69,10 @@ export default function ArchivePage() {
   const [isLoggedIn,      setIsLoggedIn]      = useState(false);
 
   // ── Load data ────────────────────────────────────────────────────────────
-  useEffect(() => {
-    loadImages();
-    checkAuth();
-    const ch = supabase.channel('archive')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'archive_images' }, loadImages)
-      .subscribe();
-    return () => { supabase.removeChannel(ch); };
-  }, []);
-
+  // ── Three.js globe ───────────────────────────────────────────────────────
+  // ── Three.js globe ───────────────────────────────────────────────────────
+  // ── Three.js globe ───────────────────────────────────────────────────────
+  // ── Three.js globe ───────────────────────────────────────────────────────
   const checkAuth = async () => {
     const { data: { session } } = await supabase.auth.getSession();
     setIsLoggedIn(!!session);
@@ -95,8 +92,20 @@ export default function ArchivePage() {
     }
   };
 
-  // ── Three.js globe ───────────────────────────────────────────────────────
-  useEffect(() => {
+  
+
+
+useEffect(() => {
+    loadImages();
+    checkAuth();
+    const ch = supabase.channel('archive')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'archive_images' }, loadImages)
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, []);
+
+  
+useEffect(() => {
     const mount = mountRef.current;
     if (!mount) return;
 
@@ -431,7 +440,8 @@ export default function ArchivePage() {
   };
 
   const timeAgo = (d: string) => {
-    const ms = Date.now() - new Date(d).getTime();
+    const currentTime = new Date().getTime();
+    const ms = currentTime - new Date(d).getTime();
     const m=Math.floor(ms/60000),h=Math.floor(ms/3600000),day=Math.floor(ms/86400000);
     if(m<1) return 'just now'; if(m<60) return `${m}m ago`; if(h<24) return `${h}h ago`;
     if(day<7) return `${day}d ago`;

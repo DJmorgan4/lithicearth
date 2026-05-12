@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
@@ -732,7 +734,7 @@ export default function PortalGlobe() {
             <div className="border-t border-[#1a2a1e]">
               <a href={`/portal/viewer?lat=${readout?.lat}&lng=${readout?.lng}`} className="w-full flex items-center justify-center gap-2 py-2.5 bg-[#0d1410] hover:bg-[#111a14] transition-colors border-b border-[#1a2a1e]">
                 <span className="text-[#D4AF37] text-[9px] tracking-[0.2em] font-light">→ OPEN IN VIEWER</span>
-              </a>
+              </Link>
               <button onClick={narrateLocation} disabled={narrating} className="w-full flex items-center justify-center gap-2 py-2.5 bg-[#0a1410] hover:bg-[#111a14] transition-colors border-b border-[#1a2a1e] disabled:opacity-50">
                 <span className="text-[#12A8AC] text-[9px] tracking-[0.2em] font-light">{narrating ? "ASTRA ANALYZING..." : "→ ASTRA NARRATE"}</span>
               </button>
@@ -762,7 +764,7 @@ export default function PortalGlobe() {
                 {projects.length === 0 ? (
                   <div className="px-4 py-3 text-center">
                     <p className="text-[#3a4a3e] text-[10px] font-light">No projects yet</p>
-                    <a href="/portal/projects/new" className="text-[#5b7c6f] text-[10px] font-light hover:text-[#7b9c8f] transition-colors">Create one →</a>
+                    <a href="/portal/projects/new" className="text-[#5b7c6f] text-[10px] font-light hover:text-[#7b9c8f] transition-colors">Create one →</Link>
                   </div>
                 ) : (
                   <div className="max-h-40 overflow-y-auto">
@@ -879,7 +881,7 @@ export default function PortalGlobe() {
                 className="block text-center border border-[#D4AF37]/30 text-[#D4AF37] text-[9px] tracking-[0.2em] py-2 hover:border-[#D4AF37]"
               >
                 OPEN TARGET IN VIEWER
-              </a>
+              </Link>
             </div>
           </div>
         )}
@@ -914,7 +916,7 @@ export default function PortalGlobe() {
                 <div className="border-t border-[#1a2a1e] pt-2.5">
                   <p className="text-[#3a4a3e] text-[9px] tracking-[0.2em] mb-2">DOCUMENTS</p>
                   {selectedStratumSite.stratum_documents.map((d, i) => (
-                    <a key={i} href={d.url} target="_blank" rel="noreferrer" className="block text-[#5b7c6f] text-[10px] font-light hover:text-[#D4AF37] transition-colors mb-1">{d.title} ({d.doc_type})</a>
+                    <a key={i} href={d.url} target="_blank" rel="noreferrer" className="block text-[#5b7c6f] text-[10px] font-light hover:text-[#D4AF37] transition-colors mb-1">{d.title} ({d.doc_type})</Link>
                   ))}
                 </div>
               )}

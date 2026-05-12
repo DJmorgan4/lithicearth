@@ -1,3 +1,5 @@
+ 
+ 
 'use client'
 import { useEffect, useState, useRef } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
@@ -91,7 +93,12 @@ export default function WhisperMap() {
 
   useEffect(() => {
     if (!sessionId) return
-    load(sessionId)
+
+    const run = async () => {
+      await load(sessionId)
+    }
+
+    run()
     const iv = setInterval(() => load(sessionId), 15000)
     return () => clearInterval(iv)
   }, [sessionId])

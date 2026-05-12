@@ -1,3 +1,5 @@
+ 
+ 
 import { NextRequest, NextResponse } from 'next/server'
 
 const GEO_API = process.env.GEO_API_URL || 'https://lithicearth-production.up.railway.app'
