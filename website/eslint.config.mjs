@@ -12,7 +12,7 @@ export default [
       'react-hooks/immutability': 'off',
       'react-hooks/set-state-in-effect': 'off',
       '@next/next/no-img-element': 'warn',
-      '@next/next/no-html-link-for-pages': 'warn',
+      '@next/next/no-html-link-for-pages': 'off',
       'react/no-unescaped-entities': 'off',
     },
   },
