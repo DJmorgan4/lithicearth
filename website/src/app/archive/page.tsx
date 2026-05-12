@@ -439,7 +439,7 @@ export default function ArchivePage() {
   };
 
   return (
-    <div className="relative w-full h-screen overflow-hidden bg-black" style={{cursor:isDragging?'grabbing':'grab'}}>
+    <div className="relative w-full min-h-screen overflow-hidden bg-black" style={{cursor:isDragging?'grabbing':'grab'}}>
 
       {/* ── Globe ── */}
       <div ref={mountRef} className="absolute inset-0" style={{cursor:'inherit'}}/>
@@ -605,7 +605,7 @@ export default function ArchivePage() {
       {/* ── Status bar ── */}
       <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 pointer-events-none"
         style={{opacity:booted?1:0,transition:'opacity 1s ease 0.8s'}}>
-        <div className="relative flex items-center gap-8 px-8 py-3.5"
+        <div className="relative flex items-center gap-4 md:p-8 px-8 py-3.5"
           style={{background:'rgba(0,0,0,0.72)',backdropFilter:'blur(20px)',border:'1px solid rgba(212,175,55,0.12)'}}>
           <div className="absolute left-2 top-2 w-2.5 h-2.5 border-l border-t border-[#D4AF37]/30"/>
           <div className="absolute right-2 top-2 w-2.5 h-2.5 border-r border-t border-[#D4AF37]/30"/>
@@ -664,7 +664,7 @@ export default function ArchivePage() {
 function PinModal({lat,lon,onClose,onSubmit}:{lat:number,lon:number,onClose:()=>void,onSubmit:()=>void}) {
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/75 backdrop-blur-lg">
-      <div className="relative p-8 max-w-sm w-full mx-6"
+      <div className="relative p-4 md:p-8 max-w-sm w-full mx-6"
         style={{background:'rgba(5,5,5,0.95)',border:'1px solid rgba(212,175,55,0.25)'}}>
         <div className="absolute left-0 top-0 w-5 h-5 border-l-2 border-t-2 border-[#D4AF37]/40"/>
         <div className="absolute right-0 top-0 w-5 h-5 border-r-2 border-t-2 border-[#D4AF37]/40"/>
@@ -781,7 +781,7 @@ function UploadModal({supabase,pinLocation,onClose,onSuccess}:{
             </label>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {field('Site Name','title',{placeholder:'e.g., Temple Complex Ruins',required:true})}
             {field('Location','location_name',{placeholder:'e.g., Valley of Kings, Egypt',required:true})}
           </div>
@@ -794,12 +794,12 @@ function UploadModal({supabase,pinLocation,onClose,onSuccess}:{
               style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(212,175,55,0.15)'}}/>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {field('Latitude','lat',{type:'number',step:'any',placeholder:'29.9792',required:true,className:'font-mono'})}
             {field('Longitude','lon',{type:'number',step:'any',placeholder:'31.1342',required:true,className:'font-mono'})}
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-[8px] text-white/40 tracking-[0.4em] uppercase font-light mb-2">Classification</label>
               <select value={form.category} onChange={e=>setForm({...form,category:e.target.value})}

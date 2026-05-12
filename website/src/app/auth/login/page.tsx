@@ -31,7 +31,7 @@ function LoginForm() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0a0e0b] flex items-center justify-center p-4">
+    <div className="min-min-h-screen bg-[#0a0e0b] flex items-center justify-center p-4">
       <div className="absolute inset-0 opacity-[0.03]"
         style={{
           backgroundImage: 'linear-gradient(#5b7c6f 1px, transparent 1px), linear-gradient(90deg, #5b7c6f 1px, transparent 1px)',

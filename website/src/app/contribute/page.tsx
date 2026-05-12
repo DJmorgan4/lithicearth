@@ -112,7 +112,7 @@ export default function ContributePage() {
   };
 
   return (
-    <main className="min-h-screen bg-black text-white">
+    <main className="min-min-h-screen bg-black text-white">
       <Navigation onSignInClick={() => setShowAuthModal(true)} />
       <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />
 
@@ -122,7 +122,7 @@ export default function ContributePage() {
         <div className="absolute right-10 top-32 w-6 h-6 border-r border-t border-[#D4AF37]/20" />
         <div className="max-w-3xl mx-auto">
           <p className="text-[10px] text-[#D4AF37]/50 tracking-[0.45em] uppercase font-light mb-8">Contribute</p>
-          <h1 className="text-5xl md:text-6xl font-light text-white leading-[1.1] mb-8"
+          <h1 className="text-3xl md:text-5xl md:text-4xl md:text-6xl font-light text-white leading-[1.1] mb-8"
             style={{ fontFamily: "'Cormorant Garamond', 'Georgia', serif" }}>
             The earth is still<br />
             <span className="text-[#D4AF37]/80">transmitting.</span>
@@ -138,7 +138,7 @@ export default function ContributePage() {
       <section className="px-10 py-24 border-b border-white/6">
         <div className="max-w-5xl mx-auto">
           <p className="text-[9px] text-[#D4AF37]/40 tracking-[0.4em] uppercase font-light mb-16">How it works</p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-0">
+          <div className="grid grid-cols-1 md:grid-cols-1 md:grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-0">
             {STEPS.map((step, i) => (
               <div key={step.number} className={`py-10 pr-10 ${i > 0 ? 'md:pl-10 md:border-l border-white/8' : ''}`}>
                 <p className="text-[40px] font-light text-[#D4AF37]/12 leading-none mb-6"
@@ -269,7 +269,7 @@ export default function ContributePage() {
                         Use my location
                       </button>
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <input type="number" step="any" value={lat} onChange={e => setLat(e.target.value)}
                         placeholder="Latitude"
                         className="px-4 py-3 bg-transparent border border-white/10 text-white/80 font-light text-sm focus:outline-none focus:border-white/25 transition-colors placeholder:text-white/15" />

@@ -13,7 +13,7 @@ export default async function ReportsPage() {
     .order('created_at', { ascending: false })
 
   return (
-    <div className="p-8 min-h-screen">
+    <div className="p-4 md:p-8 min-min-h-screen">
       <div className="mb-10">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-6 h-px bg-[#5b7c6f]" />
@@ -34,7 +34,7 @@ export default async function ReportsPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-px bg-[#1a2a1e] mb-10">
+      <div className="grid grid-cols-1 md:grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-px bg-[#1a2a1e] mb-10">
         {[
           { label: 'PHASE I ESA', sub: 'ASTM E1527-21', status: 'Available via Ceto' },
           { label: 'MSIGI ANALYSIS', sub: 'Multi-source interferometric', status: 'Beta' },

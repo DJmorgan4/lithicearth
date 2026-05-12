@@ -31,7 +31,7 @@ export default async function ProjectDetailPage({
   const total = observations?.length ?? 0
 
   return (
-    <div className="p-8 min-h-screen">
+    <div className="p-4 md:p-8 min-min-h-screen">
       <Link href="/portal" className="flex items-center gap-2 text-[#3a4a3e] hover:text-[#7a8a7d] text-xs font-light mb-8 transition-colors">
         <ArrowLeft size={11} />
         Projects
@@ -75,7 +75,7 @@ export default async function ProjectDetailPage({
         <p className="text-[#7a8a7d] text-sm font-light leading-relaxed mb-10 border-l-2 border-[#1a2a1e] pl-5 max-w-2xl">{project.description}</p>
       )}
 
-      <div className="grid grid-cols-4 gap-px bg-[#1a2a1e] mb-10">
+      <div className="grid grid-cols-1 md:grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-px bg-[#1a2a1e] mb-10">
         {[
           { label: 'OBSERVATIONS', value: total },
           { label: 'FLAGGED ANOMALIES', value: flagged.length },

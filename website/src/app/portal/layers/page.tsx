@@ -280,7 +280,7 @@ export default function DataLayersPage() {
   const selectedCat = LAYER_CATEGORIES.find(c => c.layers.some(l => l.id === activeLayer))
 
   return (
-    <div className="min-h-screen bg-[#0a0e0b] flex flex-col">
+    <div className="min-min-h-screen bg-[#0a0e0b] flex flex-col">
       <div className="px-8 pt-8 pb-6 border-b border-[#1a2a1e]">
         <div className="flex items-center gap-3 mb-3">
           <div className="w-6 h-px bg-[#5b7c6f]" />
@@ -293,7 +293,7 @@ export default function DataLayersPage() {
               {LAYER_CATEGORIES.reduce((a, c) => a + c.layers.length, 0)} modalities · {enabled.size} active · STAC-indexed
             </p>
           </div>
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-4 md:p-6">
             {(['live','processing','field','coming','research'] as const).map(s => (
               <div key={s} className="flex items-center gap-2">
                 <div className="w-1.5 h-1.5 rounded-full" style={{ background: STATUS_STYLES[s].color }} />
@@ -305,7 +305,7 @@ export default function DataLayersPage() {
       </div>
 
       <div className="flex flex-1 overflow-hidden">
-        <div className="w-80 border-r border-[#1a2a1e] overflow-y-auto">
+        <div className="w-full md:w-80 border-r border-[#1a2a1e] overflow-y-auto">
           {LAYER_CATEGORIES.map(cat => {
             const CatIcon = cat.icon
             return (
@@ -358,7 +358,7 @@ export default function DataLayersPage() {
 
         <div className="flex-1 overflow-y-auto">
           {selected && selectedCat ? (
-            <div className="p-8 max-w-3xl">
+            <div className="p-4 md:p-8 max-w-3xl">
               <div className="flex items-start justify-between mb-8">
                 <div>
                   <div className="flex items-center gap-3 mb-3">
@@ -384,7 +384,7 @@ export default function DataLayersPage() {
 
               <p className="text-[#a8a49c] text-sm font-light leading-relaxed mb-8 border-l-2 border-[#1a2a1e] pl-5">{selected.description}</p>
 
-              <div className="grid grid-cols-3 gap-px bg-[#1a2a1e] mb-8">
+              <div className="grid grid-cols-1 md:grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-px bg-[#1a2a1e] mb-8">
                 {[
                   { label: 'RESOLUTION', value: selected.resolution },
                   { label: 'WAVELENGTH', value: selected.wavelength },
@@ -402,7 +402,7 @@ export default function DataLayersPage() {
                   <div className="w-4 h-px" style={{ background: selectedCat.accent }} />
                   <span className="text-[9px] tracking-[0.25em] font-light" style={{ color: selectedCat.accent }}>APPLICATIONS</span>
                 </div>
-                <div className="grid grid-cols-2 gap-px bg-[#1a2a1e]">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-px bg-[#1a2a1e]">
                   {selected.use.map(u => (
                     <div key={u} className="bg-[#0d1410] px-4 py-3 flex items-center gap-3">
                       <div className="w-1 h-1 rounded-full flex-shrink-0" style={{ background: selectedCat.accent }} />
@@ -440,7 +440,7 @@ export default function DataLayersPage() {
           )}
         </div>
 
-        <div className="w-56 border-l border-[#1a2a1e] p-4 overflow-y-auto">
+        <div className="w-full md:w-56 border-l border-[#1a2a1e] p-4 overflow-y-auto">
           <div className="flex items-center gap-2 mb-4">
             <div className="w-3 h-px bg-[#5b7c6f]" />
             <span className="text-[#3a4a3e] text-[9px] tracking-widest font-light">ACTIVE STACK</span>

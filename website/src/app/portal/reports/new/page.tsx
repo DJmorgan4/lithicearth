@@ -137,7 +137,7 @@ function NewReportInner() {
   }
 
   return (
-    <div className="p-8 min-h-screen max-w-4xl">
+    <div className="p-4 md:p-8 min-min-h-screen max-w-4xl">
       <div className="mb-10">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-6 h-px bg-[#5b7c6f]" />
@@ -156,7 +156,7 @@ function NewReportInner() {
       <div className="space-y-3 mb-6">
         <div>
           <label className="block text-[#3a4a3e] text-[9px] tracking-[0.25em] font-light mb-2">REPORT TYPE</label>
-          <div className="grid grid-cols-2 gap-px bg-[#1a2a1e]">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-px bg-[#1a2a1e]">
             {REPORT_TYPES.map(rt => (
               <button key={rt.id} onClick={() => setReportType(rt.id)}
                 className={`px-4 py-3 text-left transition-colors ${reportType === rt.id ? 'bg-[#111a14]' : 'bg-[#0d1410]'}`}>
@@ -220,7 +220,7 @@ function NewReportInner() {
           </div>
 
           <Section title="TERRAIN SCAN" defaultOpen={true}>
-            <div className="grid grid-cols-3 gap-3 text-[10px] font-light">
+            <div className="grid grid-cols-1 md:grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 text-[10px] font-light">
               <div><span className="text-[#3a4a3e]">ANOMALIES</span><p className="text-[#e8e4da] mt-1">{reportData.scan?.candidates?.length ?? '—'}</p></div>
               <div><span className="text-[#3a4a3e]">MEAN ELEV</span><p className="text-[#e8e4da] mt-1">{reportData.scan?.terrain?.mean_elevation_m}m</p></div>
               <div><span className="text-[#3a4a3e]">STD</span><p className="text-[#e8e4da] mt-1">±{reportData.scan?.terrain?.std_elevation_m}m</p></div>
@@ -255,7 +255,7 @@ function NewReportInner() {
           )}
 
           <Section title="SAR + MUON">
-            <div className="grid grid-cols-2 gap-3 text-[10px] font-light">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[10px] font-light">
               <div><span className="text-[#3a4a3e]">SAR PLATFORM</span><p className="text-[#e8e4da] mt-1">{reportData.scan?.sar?.platform ?? '—'}</p></div>
               <div><span className="text-[#3a4a3e]">SAR DATE</span><p className="text-[#e8e4da] mt-1">{reportData.scan?.sar?.date ?? '—'}</p></div>
               <div><span className="text-[#3a4a3e]">MUON FLUX</span><p className="text-[#e8e4da] mt-1">{reportData.scan?.muon_baseline?.flux_m2_min}/m²/min</p></div>
@@ -270,7 +270,7 @@ function NewReportInner() {
 
 export default function NewReportPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-[#3a4a3e] text-xs font-light">Loading...</div>}>
+    <Suspense fallback={<div className="p-4 md:p-8 text-[#3a4a3e] text-xs font-light">Loading...</div>}>
       <NewReportInner />
     </Suspense>
   )

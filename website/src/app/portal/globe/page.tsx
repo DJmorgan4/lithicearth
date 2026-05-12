@@ -498,9 +498,9 @@ export default function PortalGlobe() {
   const toggleGroup = (g: string) => setCollapsedGroups(p => { const n = new Set(p); n.has(g) ? n.delete(g) : n.add(g); return n; });
 
   return (
-    <div className="flex h-screen bg-[#0a0e0b] overflow-hidden">
+    <div className="flex min-h-screen bg-[#0a0e0b] overflow-hidden">
       {sidebarOpen && (
-        <aside className="w-64 h-full bg-[#0d1410] border-r border-[#1a2a1e] flex flex-col overflow-hidden z-10 flex-shrink-0">
+        <aside className="w-full md:w-64 h-full bg-[#0d1410] border-r border-[#1a2a1e] flex flex-col overflow-hidden z-10 flex-shrink-0">
           <div className="px-5 py-4 border-b border-[#1a2a1e] flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Layers size={12} className="text-[#5b7c6f]" />
@@ -633,7 +633,7 @@ export default function PortalGlobe() {
         )}
 
         {readout && (
-          <div className="absolute top-4 right-4 w-64 bg-[#0d1410] border border-[#1a2a1e] z-20 max-h-[85vh] overflow-y-auto">
+          <div className="absolute top-4 right-4 w-full md:w-64 bg-[#0d1410] border border-[#1a2a1e] z-20 max-h-[85vh] overflow-y-auto">
             <div className="flex items-center justify-between px-4 py-3 border-b border-[#1a2a1e]">
               <span className="text-[#5b7c6f] text-[9px] tracking-[0.25em] font-light">POINT READOUT</span>
               <div className="flex items-center gap-2">
@@ -743,7 +743,7 @@ export default function PortalGlobe() {
                 </div>
               )}
             </div>
-            <div className="border-t border-[#1a2a1e] grid grid-cols-3 gap-px bg-[#1a2a1e]">
+            <div className="border-t border-[#1a2a1e] grid grid-cols-1 md:grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-px bg-[#1a2a1e]">
               <button onClick={flagAnomaly} disabled={flagging || flagDone} className="bg-[#0d1410] px-3 py-2.5 flex items-center justify-center gap-1.5 hover:bg-[#111a14] transition-colors disabled:opacity-50">
                 {flagDone ? <Check size={10} className="text-[#5b7c6f]" /> : flagging ? <AlertCircle size={10} className="text-[#5b7c6f] animate-pulse" /> : <Flag size={10} className="text-[#5b7c6f]" />}
                 <span className="text-[#5b7c6f] text-[9px] tracking-[0.12em] font-light">{flagDone ? 'FLAGGED' : flagging ? 'SAVING...' : 'FLAG ANOMALY'}</span>
@@ -780,7 +780,7 @@ export default function PortalGlobe() {
         )}
 
         {selectedAstraCandidate && (
-          <div className="absolute bottom-4 right-4 w-80 bg-[#07110c] border border-[#D4AF37]/40 z-30">
+          <div className="absolute bottom-4 right-4 w-full md:w-80 bg-[#07110c] border border-[#D4AF37]/40 z-30">
             <div className="px-4 py-3 border-b border-[#D4AF37]/20 flex items-center justify-between">
               <span className="text-[#D4AF37] text-[9px] tracking-[0.25em]">ASTRA TARGET</span>
               <button onClick={() => setSelectedAstraCandidate(null)} className="text-[#3a4a3e] hover:text-[#c8c4ba]"><X size={11} /></button>
@@ -885,7 +885,7 @@ export default function PortalGlobe() {
         )}
 
         {selectedStratumSite && (
-          <div className="absolute top-4 right-4 w-72 bg-[#0d1410] border border-[#D4AF37]/30 z-20">
+          <div className="absolute top-4 right-4 w-full md:w-72 bg-[#0d1410] border border-[#D4AF37]/30 z-20">
             <div className="flex items-center justify-between px-4 py-3 border-b border-[#D4AF37]/20">
               <span className="text-[#D4AF37] text-[9px] tracking-[0.25em] font-light">STRATUM · CETO SITE</span>
               <button onClick={() => setSelectedStratumSite(null)} className="text-[#3a4a3e] hover:text-[#c8c4ba]"><X size={11} /></button>

@@ -81,7 +81,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
               ×
             </button>
 
-            <div className="p-8">
+            <div className="p-4 md:p-8">
               <div className="mb-8">
                 <div className="inline-flex items-center gap-2 mb-4">
                   <div className="w-6 h-px bg-[#5b7c6f]" />

@@ -9,7 +9,7 @@ export default function AboutPage() {
   const [showAuthModal, setShowAuthModal] = useState(false);
 
   return (
-    <main className="min-h-screen bg-[#f5f3ed]">
+    <main className="min-min-h-screen bg-[#f5f3ed]">
       <Navigation onSignInClick={() => setShowAuthModal(true)} />
       <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />
       <section className="relative py-24 px-6 pt-32 bg-[#3d4f44]">
@@ -19,7 +19,7 @@ export default function AboutPage() {
               <div className="w-8 h-px bg-[#8b9d8a]"></div>
               <span className="text-[#8b9d8a] text-xs tracking-widest font-light">PURPOSE</span>
             </div>
-            <h2 className="text-4xl md:text-5xl font-light text-[#f5f3ed] mb-8 tracking-wide leading-tight">
+            <h2 className="text-4xl md:text-3xl md:text-5xl font-light text-[#f5f3ed] mb-8 tracking-wide leading-tight">
               Building a record for the next century
             </h2>
           </div>
@@ -44,13 +44,13 @@ export default function AboutPage() {
             </div>
             <h2 className="text-4xl font-light text-[#2d3d34] tracking-wide">What guides this work</h2>
           </div>
-          <div className="grid md:grid-cols-3 gap-8">
+          <div className="grid md:grid-cols-1 md:grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 md:p-8">
             {[
               { title: 'Long-term thinking', description: 'Building an archive meant to last generations.' },
               { title: 'Human-centered', description: 'Contributors own their work, communities own their stories.' },
               { title: 'Rigorous standards', description: 'Metadata integrity and ethical stewardship.' },
             ].map((value) => (
-              <div key={value.title} className="bg-white border border-[#d4cfc0] p-8">
+              <div key={value.title} className="bg-white border border-[#d4cfc0] p-4 md:p-8">
                 <h3 className="text-lg font-light text-[#2d3d34] mb-3 tracking-wide">{value.title}</h3>
                 <p className="text-[#7a8a7d] leading-relaxed font-light text-sm">{value.description}</p>
               </div>

@@ -150,7 +150,7 @@ function SaveSitePanel({
   };
 
   return (
-    <div className="absolute top-6 right-6 w-72 bg-black/90 backdrop-blur-xl border border-[#D4AF37]/30 p-5">
+    <div className="absolute top-4 md:p-6 right-6 w-full md:w-72 bg-black/90 backdrop-blur-xl border border-[#D4AF37]/30 p-5">
       <div className="absolute left-0 top-0 w-3 h-3 border-l border-t border-[#D4AF37]/60" />
       <div className="absolute right-0 top-0 w-3 h-3 border-r border-t border-[#D4AF37]/60" />
       <div className="absolute left-0 bottom-0 w-3 h-3 border-l border-b border-[#D4AF37]/60" />

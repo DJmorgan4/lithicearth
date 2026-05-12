@@ -19,7 +19,7 @@ export default function GamePage() {
   };
 
   return (
-    <div className="relative min-h-screen bg-[#0a0f0d]">
+    <div className="relative min-min-h-screen bg-[#0a0f0d]">
       <motion.div
         initial={{ y: -100 }}
         animate={{ y: 0 }}
@@ -64,7 +64,7 @@ export default function GamePage() {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.3 }}
-        className="pt-[73px] h-screen"
+        className="pt-[73px] min-h-screen"
       >
         <iframe
           src="https://game.lithicearth.com"

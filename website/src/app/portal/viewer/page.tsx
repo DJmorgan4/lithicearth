@@ -799,7 +799,7 @@ function ViewerInner() {
 
 
   return (
-    <div className="flex h-screen bg-[#0a0e0b] overflow-hidden font-light">
+    <div className="flex min-h-screen bg-[#0a0e0b] overflow-hidden font-light">
 
       {/* ── Layer Sidebar ─────────────────────────────────────────────── */}
       {sidebarOpen && (
@@ -934,7 +934,7 @@ function ViewerInner() {
       </div>
 
       {/* ── Intel Panel ───────────────────────────────────────────────── */}
-      <div className="w-64 h-full bg-[#0b0f0c] border-l border-[#1a2a1e] flex flex-col z-10 flex-shrink-0">
+      <div className="w-full md:w-64 h-full bg-[#0b0f0c] border-l border-[#1a2a1e] flex flex-col z-10 flex-shrink-0">
         <div className="px-4 py-3 border-b border-[#1a2a1e] flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-1.5 h-1.5 rounded-full bg-[#5b7c6f]" />
@@ -952,7 +952,7 @@ function ViewerInner() {
 
         <div className="flex-1 overflow-y-auto">
           {intelLoading && (
-            <div className="p-6 flex flex-col items-center gap-3">
+            <div className="p-4 md:p-6 flex flex-col items-center gap-3">
               <div className="w-8 h-8 border border-[#1a2a1e] border-t-[#5b7c6f] rounded-full animate-spin" />
               <p className="text-[#2a3a2e] text-[9px] tracking-widest">QUERYING SATELLITES</p>
             </div>
@@ -1107,7 +1107,7 @@ function ViewerInner() {
           )}
 
           {!intel && !intelLoading && !intelError && (
-            <div className="p-6 text-center">
+            <div className="p-4 md:p-6 text-center">
               <Zap size={20} className="text-[#1a2a1e] mx-auto mb-3" />
               <p className="text-[#2a3a2e] text-[9px] tracking-widest">CLICK MAP TO ANALYZE</p>
             </div>
@@ -1226,7 +1226,7 @@ function ViewerInner() {
         <div className="border-t border-[#1a2a1e] p-3 space-y-2">
           <div className="text-[#5b7c6f] text-[8px] tracking-[0.25em]">AOI MANAGER</div>
 
-          <div className="grid grid-cols-3 gap-1">
+          <div className="grid grid-cols-1 md:grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-1">
             {(['pin', 'rectangle', 'polygon'] as AOIMode[]).map((mode) => (
               <button
                 key={mode}
@@ -1270,7 +1270,7 @@ function ViewerInner() {
             {terrainMode ? 'TERRAIN PROFILE ACTIVE' : 'TERRAIN PROFILE'}
           </button>
 
-          <div className="grid grid-cols-2 gap-1">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-1">
             <button onClick={saveAOI} disabled={!aoiGeometry || aoiSaveStatus === 'saving'} className="py-2 border border-[#1a2a1e] hover:border-[#5b7c6f] text-[#5b7c6f] text-[8px] tracking-[0.15em] disabled:opacity-40">
               {aoiSaveStatus === 'saving' ? 'SAVING' : aoiSaveStatus === 'saved' ? 'SAVED' : aoiSaveStatus === 'error' ? 'FAILED' : 'SAVE'}
             </button>
@@ -1357,7 +1357,7 @@ function ViewerInner() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-1">
+              <div className="grid grid-cols-1 md:grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-1">
                 {temporalScenes.map((scene) => (
                   <div key={scene.label} className="border border-[#111a14] p-2">
                     <p className="text-[#5b7c6f] text-[7px]">{scene.label}</p>
@@ -1456,7 +1456,7 @@ function ViewerInner() {
               })}
             </svg>
 
-            <div className="grid grid-cols-3 gap-1 mt-2">
+            <div className="grid grid-cols-1 md:grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-1 mt-2">
               <div className="border border-[#111a14] p-2">
                 <p className="text-[#2a3a2e] text-[6px]">MIN</p>
                 <p className="text-[#c8c4ba] text-[9px]">
@@ -1511,7 +1511,7 @@ export default function ViewerPage() {
 
   return (
     <Suspense fallback={
-      <div className="h-screen bg-[#0a0e0b] flex items-center justify-center">
+      <div className="min-h-screen bg-[#0a0e0b] flex items-center justify-center">
         <div className="text-[#2a3a2e] text-[9px] tracking-[0.3em]">INITIALIZING...</div>
       </div>
     }>

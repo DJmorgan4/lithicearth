@@ -246,7 +246,7 @@ export function Hero({ onSignInClick }: HeroProps) {
   useEffect(() => { idxRef.current = siteIdx; }, [siteIdx]);
 
   return (
-    <div className="relative h-screen w-full overflow-hidden" style={{ background:'#020508' }}>
+    <div className="relative min-h-screen w-full overflow-hidden" style={{ background:'#020508' }}>
 
       <div ref={mountRef} className="absolute inset-0" />
 

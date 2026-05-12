@@ -99,7 +99,7 @@ export default function WhisperMap() {
   const visible = filter ? signals.filter(s => s.signal_type === filter) : signals
 
   return (
-    <div className="w-full h-screen bg-[#050510] flex flex-col">
+    <div className="w-full min-h-screen bg-[#050510] flex flex-col">
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-3 bg-zinc-950 border-b border-zinc-800">
         <span className="text-zinc-100 font-mono text-sm font-semibold tracking-widest uppercase">
@@ -120,7 +120,7 @@ export default function WhisperMap() {
         </select>
         <input
           className="bg-zinc-900 text-zinc-400 px-2 py-1.5 rounded text-xs border 
-                     border-zinc-700 w-64 font-mono"
+                     border-zinc-700 w-full md:w-64 font-mono"
           placeholder="or paste session UUID..."
           onBlur={e => { setSessionId(e.target.value); }}
         />

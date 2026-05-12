@@ -33,7 +33,7 @@ export function Values() {
       {/* Headline */}
       <div className="max-w-6xl mx-auto mb-20">
         <h2
-          className="text-4xl md:text-5xl font-light text-white/90 leading-[1.15]"
+          className="text-4xl md:text-3xl md:text-5xl font-light text-white/90 leading-[1.15]"
           style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
         >
           What guides
@@ -43,7 +43,7 @@ export function Values() {
       </div>
 
       {/* Cards */}
-      <div className="max-w-6xl mx-auto grid md:grid-cols-3 gap-0">
+      <div className="max-w-6xl mx-auto grid md:grid-cols-1 md:grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-0">
         {VALUES.map((v, i) => (
           <div
             key={v.title}
@@ -83,7 +83,7 @@ export function Values() {
       </div>
 
       {/* Bottom CTA strip */}
-      <div className="max-w-6xl mx-auto mt-24 pt-16 border-t border-white/6 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+      <div className="max-w-6xl mx-auto mt-24 pt-16 border-t border-white/6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 md:p-6">
         <p
           className="text-2xl font-light text-white/60 leading-snug max-w-lg"
           style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
