@@ -21,7 +21,7 @@ export default function GamePage() {
   };
 
   return (
-    <div className="relative min-min-h-screen bg-[#0a0f0d]">
+    <div className="relative min-h-screen bg-[#0a0f0d]">
       <motion.div
         initial={{ y: -100 }}
         animate={{ y: 0 }}

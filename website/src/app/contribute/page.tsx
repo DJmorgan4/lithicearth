@@ -114,7 +114,7 @@ export default function ContributePage() {
   };
 
   return (
-    <main className="min-min-h-screen bg-black text-white">
+    <main className="min-h-screen bg-black text-white">
       <Navigation onSignInClick={() => setShowAuthModal(true)} />
       <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />
 

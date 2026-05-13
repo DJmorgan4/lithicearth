@@ -53,7 +53,7 @@ export default function NewProjectPage() {
   }
 
   return (
-    <div className="p-4 md:p-8 min-min-h-screen max-w-2xl">
+    <div className="p-4 md:p-8 min-h-screen max-w-2xl">
       <div className="mb-10">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-6 h-px bg-[#5b7c6f]" />

@@ -33,7 +33,7 @@ export default async function ProjectDetailPage({
   const total = observations?.length ?? 0
 
   return (
-    <div className="p-4 md:p-8 min-min-h-screen">
+    <div className="p-4 md:p-8 min-h-screen">
       <Link href="/portal" className="flex items-center gap-2 text-[#3a4a3e] hover:text-[#7a8a7d] text-xs font-light mb-8 transition-colors">
         <ArrowLeft size={11} />
         Projects

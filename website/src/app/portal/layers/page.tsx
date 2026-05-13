@@ -282,7 +282,7 @@ export default function DataLayersPage() {
   const selectedCat = LAYER_CATEGORIES.find(c => c.layers.some(l => l.id === activeLayer))
 
   return (
-    <div className="min-min-h-screen bg-[#0a0e0b] flex flex-col">
+    <div className="min-h-screen bg-[#0a0e0b] flex flex-col">
       <div className="px-8 pt-8 pb-6 border-b border-[#1a2a1e]">
         <div className="flex items-center gap-3 mb-3">
           <div className="w-6 h-px bg-[#5b7c6f]" />

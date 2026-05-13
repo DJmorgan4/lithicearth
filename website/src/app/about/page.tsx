@@ -11,7 +11,7 @@ export default function AboutPage() {
   const [showAuthModal, setShowAuthModal] = useState(false);
 
   return (
-    <main className="min-min-h-screen bg-[#f5f3ed]">
+    <main className="min-h-screen bg-[#f5f3ed]">
       <Navigation onSignInClick={() => setShowAuthModal(true)} />
       <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />
       <section className="relative py-24 px-6 pt-32 bg-[#3d4f44]">
