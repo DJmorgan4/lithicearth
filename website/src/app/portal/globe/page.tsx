@@ -86,12 +86,13 @@ function brightenTexture(img: HTMLImageElement, factor: number): THREE.Texture {
   return tex;
 }
 
-function GlobeScene({ posts, stratumSites, layers, astraCandidates, selectedAstraCandidate, onGlobeClick, onMouseMove, onStratumSiteClick }: {
+function GlobeScene({ posts, stratumSites, layers, astraCandidates, selectedAstraCandidate, scanResult, onGlobeClick, onMouseMove, onStratumSiteClick }: {
   posts: PublicPost[];
   stratumSites: StratumSite[];
   layers: LayerConfig[];
   astraCandidates: AstraCandidate[];
   selectedAstraCandidate: AstraCandidate | null;
+  scanResult: any;
   onGlobeClick: (lat: number, lng: number) => void;
   onMouseMove: (lat: number, lng: number) => void;
   onStratumSiteClick: (site: StratumSite) => void;
@@ -328,6 +329,57 @@ function GlobeScene({ posts, stratumSites, layers, astraCandidates, selectedAstr
         )}
       </group>
 
+      {/* MSIGI scan candidates — hex cluster markers */}
+      {scanResult?.candidates?.map((c: any) => {
+        const phi = (90 - c.lat) * (Math.PI / 180);
+        const theta = c.lng * (Math.PI / 180);
+        const r = 2.055;
+        const x = r * Math.sin(phi) * Math.cos(theta);
+        const y = r * Math.cos(phi);
+        const z = r * Math.sin(phi) * Math.sin(theta);
+        const score = c.score || 0;
+        const color = score >= 0.7 ? '#D4AF37' : score >= 0.5 ? '#12A8AC' : '#5b7c6f';
+        const size = 0.018 + score * 0.022;
+        return (
+          <group key={`msigi-${c.id}`} position={[x, y, z]}>
+            {/* Core dot */}
+            <mesh>
+              <sphereGeometry args={[size, 16, 16]} />
+              <meshBasicMaterial color={color} transparent opacity={0.95} />
+            </mesh>
+            {/* Outer ring */}
+            <mesh>
+              <sphereGeometry args={[size * 2.2, 16, 16]} />
+              <meshBasicMaterial color={color} transparent opacity={0.12} blending={THREE.AdditiveBlending} />
+            </mesh>
+            {/* Score label ring */}
+            <mesh rotation={[Math.PI / 2, 0, 0]}>
+              <torusGeometry args={[size * 3.5, 0.002, 8, 32]} />
+              <meshBasicMaterial color={color} transparent opacity={0.3} blending={THREE.AdditiveBlending} />
+            </mesh>
+          </group>
+        );
+      })}
+
+      {/* Scan origin pulse ring */}
+      {scanResult?.location && (() => {
+        const phi = (90 - scanResult.location.lat) * (Math.PI / 180);
+        const theta = scanResult.location.lng * (Math.PI / 180);
+        const r = 2.015;
+        const x = r * Math.sin(phi) * Math.cos(theta);
+        const y = r * Math.cos(phi);
+        const z = r * Math.sin(phi) * Math.sin(theta);
+        // Radius ring at ~500m scale on globe surface
+        return (
+          <group position={[x, y, z]}>
+            <mesh>
+              <sphereGeometry args={[0.004, 12, 12]} />
+              <meshBasicMaterial color="#D4AF37" />
+            </mesh>
+          </group>
+        );
+      })()}
+
       <Stars radius={120} depth={60} count={6000} factor={3} saturation={0} fade speed={0.2} />
       <OrbitControls enableZoom enablePan={false} minDistance={2.05} maxDistance={20} zoomSpeed={0.8} autoRotateSpeed={0} minPolarAngle={Math.PI * 0.1} maxPolarAngle={Math.PI * 0.9} />
     </>
@@ -361,6 +413,8 @@ export default function PortalGlobe() {
   const [astraDiscovery, setAstraDiscovery] = useState<AstraDiscovery | null>(null);
   const [selectedAstraCandidate, setSelectedAstraCandidate] = useState<AstraCandidate | null>(null);
   const [expeditionMode, setExpeditionMode] = useState(false);
+  const [scanResult, setScanResult] = useState<any>(null);
+  const [scanLoading, setScanLoading] = useState(false);
 
   const supabase = createClient();
 
@@ -376,8 +430,16 @@ export default function PortalGlobe() {
   const handleGlobeClick = useCallback(async (lat: number, lng: number) => {
     setReadout(buildReadout(lat, lng));
     setFlagDone(false); setShowProjectPicker(false); setIntel(null); setIntelLoading(true);
-    try { const res = await fetch(`/api/intel?lat=${lat}&lng=${lng}`); setIntel(await res.json()); } catch {}
-    finally { setIntelLoading(false); }
+    setScanResult(null); setScanLoading(true);
+    // Parallel: intel analyze + MSIGI scan
+    await Promise.allSettled([
+      fetch(`/api/intel?lat=${lat}&lng=${lng}`)
+        .then(r => r.json()).then(setIntel).catch(() => {})
+        .finally(() => setIntelLoading(false)),
+      fetch(`/api/scan?lat=${lat}&lng=${lng}&radius=500`)
+        .then(r => r.json()).then(setScanResult).catch(() => {})
+        .finally(() => setScanLoading(false)),
+    ]);
   }, [buildReadout]);
 
   const handleMouseMove = useCallback((lat: number, lng: number) => { setCursorCoords({ lat, lng }); }, []);
@@ -624,7 +686,7 @@ export default function PortalGlobe() {
         </div>
 
         <Canvas camera={{ position: [-1.5, 0.8, 3.0], fov: 42 }} style={{ background: '#020508' }} gl={{ antialias: true }}>
-          <GlobeScene posts={posts} stratumSites={stratumSites} layers={layers} astraCandidates={astraDiscovery?.candidates || []} selectedAstraCandidate={selectedAstraCandidate} onGlobeClick={handleGlobeClick} onMouseMove={handleMouseMove} onStratumSiteClick={(site) => { setSelectedStratumSite(site); setReadout(null); setIntel(null); }} />
+          <GlobeScene posts={posts} stratumSites={stratumSites} layers={layers} astraCandidates={astraDiscovery?.candidates || []} selectedAstraCandidate={selectedAstraCandidate} scanResult={scanResult} onGlobeClick={handleGlobeClick} onMouseMove={handleMouseMove} onStratumSiteClick={(site) => { setSelectedStratumSite(site); setReadout(null); setIntel(null); }} />
         </Canvas>
 
         {cursorCoords && (
@@ -730,6 +792,64 @@ export default function PortalGlobe() {
                 )}
               </div>
             )}
+            {/* MSIGI Scan Results Panel */}
+            {(scanLoading || scanResult) && (
+              <div className="border-t border-[#1a2a1e] px-4 py-3 space-y-2">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-3 h-px bg-[#D4AF37]" />
+                  <span className="text-[#D4AF37] text-[9px] tracking-[0.2em] font-light">MSIGI SCAN</span>
+                  {scanLoading && <span className="text-[#3a4a3e] text-[9px] animate-pulse">scanning...</span>}
+                </div>
+                {scanResult && !scanResult.error && (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[#3a4a3e] text-[9px] tracking-[0.2em]">CANDIDATES</span>
+                      <span className="text-[#c8c4ba] text-[9px]">{scanResult.candidates?.length || 0} detected</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[#3a4a3e] text-[9px] tracking-[0.2em]">ELEVATION</span>
+                      <span className="text-[#5b7c6f] text-[9px]">{scanResult.terrain?.mean_elevation_m}m mean · {scanResult.terrain?.source}</span>
+                    </div>
+                    {scanResult.spectral?.valid && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-[#3a4a3e] text-[9px] tracking-[0.2em]">NDVI AOI</span>
+                        <span className="text-[9px]" style={{color: (scanResult.spectral.ndvi_mean||0) > 0.4 ? '#4ade80' : '#fbbf24'}}>{scanResult.spectral.ndvi_mean} · {scanResult.spectral.date}</span>
+                      </div>
+                    )}
+                    {scanResult.sar?.valid && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-[#3a4a3e] text-[9px] tracking-[0.2em]">SAR</span>
+                        <span className="text-[#5b7c6f] text-[9px]">{scanResult.sar.platform} · {scanResult.sar.date}</span>
+                      </div>
+                    )}
+                    {scanResult.muon_baseline?.valid && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-[#3a4a3e] text-[9px] tracking-[0.2em]">MUON Kp</span>
+                        <span className="text-[#5b7c6f] text-[9px]">{scanResult.muon_baseline.kp_index} · {scanResult.muon_baseline.flux_m2_min}/m²/min</span>
+                      </div>
+                    )}
+                    {scanResult.candidates?.length > 0 && (
+                      <div className="border-t border-[#1a2a1e] pt-2 space-y-1.5">
+                        <span className="text-[#3a4a3e] text-[8px] tracking-[0.2em]">TOP CANDIDATES</span>
+                        {scanResult.candidates.slice(0, 3).map((c: any) => (
+                          <div key={c.id} className="flex items-center justify-between border border-[#1a2a1e] px-2 py-1.5">
+                            <div>
+                              <span className="text-[#D4AF37] text-[9px] font-light">{c.id}</span>
+                              <span className="text-[#3a4a3e] text-[8px] ml-2">{c.confidence}</span>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-[9px]" style={{color: c.score >= 0.7 ? '#D4AF37' : c.score >= 0.5 ? '#12A8AC' : '#5b7c6f'}}>{Math.round(c.score * 100)}%</span>
+                              <span className="block text-[#2a3a2e] text-[8px]">{c.height_above_mean_m}m · ⌀{c.diameter_m}m</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
             <div className="border-t border-[#1a2a1e]">
               <Link href={`/portal/viewer?lat=${readout?.lat}&lng=${readout?.lng}`} className="w-full flex items-center justify-center gap-2 py-2.5 bg-[#0d1410] hover:bg-[#111a14] transition-colors border-b border-[#1a2a1e]">
                 <span className="text-[#D4AF37] text-[9px] tracking-[0.2em] font-light">→ OPEN IN VIEWER</span>
