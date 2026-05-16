@@ -1640,6 +1640,60 @@ async def scan_aoi_v2(lat: float, lng: float, radius_m: float = 500.0):
 
 
 # ── Copernicus Data Space token proxy ────────────────────────────────────
+
+# ── /thermal — Landsat-9 surface temperature pixel sample ────────────────────
+@app.get("/thermal")
+async def thermal(lat: float, lng: float):
+    lat, lng = normalize_coords(lat, lng)
+    try:
+        from pystac_client import Client
+        catalog = Client.open("https://earth-search.aws.element84.com/v1")
+        search = catalog.search(
+            collections=["landsat-c2-l2"],
+            intersects={"type": "Point", "coordinates": [lng, lat]},
+            query={"eo:cloud_cover": {"lt": 30}},
+            max_items=5
+        )
+        items = list(search.items())
+        if not items:
+            return {"status": "no_results", "location": {"lat": lat, "lng": lng}}
+
+        item = items[0]
+        acquired = item.datetime.isoformat() if item.datetime else None
+        cloud_cover = item.properties.get("eo:cloud_cover")
+        platform = item.properties.get("platform")
+
+        temp_celsius = None
+        method = "scene_coverage_confirmed"
+        raw_val = None
+
+        st_asset = item.assets.get("ST_B10") or item.assets.get("st_b10")
+        if st_asset:
+            st_href = st_asset.href if hasattr(st_asset, "href") else st_asset.get("href")
+            raw_val = sample_cog_point(st_href, lng, lat)
+            if raw_val is not None and raw_val > 0:
+                kelvin = raw_val * 0.00341802 + 149.0
+                temp_celsius = round(kelvin - 273.15, 2)
+                method = "pixel_sample_ST_B10_collection2"
+
+        return {
+            "status": "found",
+            "value": temp_celsius,
+            "unit": "celsius" if temp_celsius is not None else None,
+            "source": "Landsat-9 Collection 2 L2",
+            "asset": "ST_B10",
+            "acquired": acquired,
+            "resolution_m": 30,
+            "method": method,
+            "platform": platform,
+            "raw_dn": raw_val,
+            "quality": {"cloud_cover_scene_pct": cloud_cover},
+            "location": {"lat": lat, "lng": lng}
+        }
+    except Exception as e:
+        return {"status": "error", "detail": str(e), "location": {"lat": lat, "lng": lng}}
+
+
 import os as _os
 
 @app.get("/cdse/token")
