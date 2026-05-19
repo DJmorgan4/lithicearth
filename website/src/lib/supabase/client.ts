@@ -8,3 +8,6 @@ export function createClient() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   )
 }
+
+// Singleton for direct import
+export const supabase = createClient()
