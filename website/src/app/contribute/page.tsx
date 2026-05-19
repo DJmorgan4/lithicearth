@@ -86,6 +86,42 @@ export default function ContributePage() {
         imagePath = data.path;
       }
 
+      // ── ONE PHOTO PER DAY CHECK ──────────────────────────────────────
+      const today = new Date().toISOString().split('T')[0];
+      const { data: todayPost } = await supabase
+        .from('posts')
+        .select('id')
+        .eq('user_id', user.id)
+        .gte('created_at', today + 'T00:00:00')
+        .limit(1)
+        .single();
+      if (todayPost) {
+        throw new Error('You have already contributed a photo today. Come back tomorrow.');
+      }
+
+      // ── ASTRA AUTO-CAPTION ────────────────────────────────────────────────
+      let astraCaption = '';
+      try {
+        const astraRes = await fetch('https://astarte-works.vercel.app/api/astra/core', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query: `Write a concise field observation note (2-3 sentences, scientific but accessible) for this archive entry:
+Title: ${title.trim()}
+Category: ${category || 'Unknown'}
+Description: ${description.trim() || 'No description provided'}
+Location: ${lat && lng ? lat + ', ' + lng : 'Location not specified'}
+
+The note should read like a field researcher's observation — what is significant about this location or observation, what it tells us about the environment, and why it belongs in a permanent archive.`,
+            source: 'lithicearth-archive',
+            domain: 'conservation',
+          }),
+          signal: AbortSignal.timeout(20000),
+        });
+        const astraData = await astraRes.json();
+        astraCaption = astraData.response || '';
+      } catch { /* non-blocking */ }
+
       // Save metadata to Supabase
       const { error } = await supabase.from('posts').insert({
         user_id: user.id,
@@ -96,6 +132,8 @@ export default function ContributePage() {
         category: category || null,
         image_url: imageUrl || null,
         image_path: imagePath || null,
+        astra_caption: astraCaption || null,
+        uploaded_at: new Date().toISOString(),
       });
 
       if (error) throw error;
