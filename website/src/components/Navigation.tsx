@@ -4,6 +4,8 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useEffect, useState as useStateNav } from 'react';
+import { createClient } from '@/lib/supabase/client';
 import { ReactNode, useState } from 'react';
 
 interface NavigationProps {
@@ -15,12 +17,20 @@ interface NavigationProps {
 export function Navigation({ onSignInClick, archiveAction }: NavigationProps) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [authed, setAuthed] = useStateNav(false);
+  useEffect(() => {
+    const sb = createClient();
+    sb.auth.getUser().then(({ data: { user } }) => setAuthed(!!user));
+    const { data: { subscription } } = sb.auth.onAuthStateChange((_e, session) => setAuthed(!!session));
+    return () => subscription.unsubscribe();
+  }, []);
 
   const links = [
     { href: '/archive', label: 'Archive' },
     { href: '/challenge', label: 'Challenge' },
     { href: '/about', label: 'About' },
     { href: '/contribute', label: 'Contribute' },
+    { href: '/profile', label: 'Profile' },
   ];
 
   return (
@@ -79,13 +89,21 @@ export function Navigation({ onSignInClick, archiveAction }: NavigationProps) {
 
           {archiveAction}
 
-          {onSignInClick && !archiveAction && (
+          {authed ? (
+            <a href="/profile" className="px-4 py-2 text-[11px] font-light text-[#D4AF37]/70 hover:text-[#D4AF37] border border-[#D4AF37]/18 hover:border-[#D4AF37]/40 transition-all duration-200 tracking-[0.18em] uppercase">
+              Profile
+            </a>
+          ) : onSignInClick && !archiveAction ? (
             <button
               onClick={onSignInClick}
               className="px-4 py-2 text-[11px] font-light text-[#D4AF37]/70 hover:text-[#D4AF37] border border-[#D4AF37]/18 hover:border-[#D4AF37]/40 transition-all duration-200 tracking-[0.18em] uppercase"
             >
               Sign In
             </button>
+          ) : (
+            <a href="/auth/login" className="px-4 py-2 text-[11px] font-light text-[#D4AF37]/70 hover:text-[#D4AF37] border border-[#D4AF37]/18 hover:border-[#D4AF37]/40 transition-all duration-200 tracking-[0.18em] uppercase">
+              Sign In
+            </a>
           )}
         </div>
 
