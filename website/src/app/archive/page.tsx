@@ -430,7 +430,7 @@ useEffect(() => {
   const flyToImage = (img: ArchiveImage) => {
     const S = stateRef.current;
     if (!S.spherical) return;
-    const target = latLonToVec3(img.lat+4, img.lon+3, 1.0);
+    const target = latLonToVec3(img.lat+4, img.lng+3, 1.0);
     // Convert back to spherical
     const phi   = Math.acos(target.y / target.length());
     const theta = Math.atan2(target.x, target.z);
