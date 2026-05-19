@@ -18,8 +18,8 @@ export default async function PortalLayout({
   }
 
   return (
-    <div className="min-h-screen bg-[#0a0e0b] flex flex-col md:flex-row">
-      <aside className="w-full md:w-full md:w-56 md:min-h-screen bg-[#0d1410] border-b md:border-b-0 md:border-r border-[#1a2a1e] flex md:flex-col overflow-x-auto md:overflow-visible sticky top-0 z-40">
+    <div className="h-screen bg-[#0a0e0b] flex flex-col md:flex-row overflow-hidden">
+      <aside className="w-full md:w-56 md:h-full bg-[#0d1410] border-b md:border-b-0 md:border-r border-[#1a2a1e] flex md:flex-col overflow-x-auto md:overflow-visible flex-shrink-0 z-40">
         <div className="shrink-0 p-4 md:p-6 border-r md:border-r-0 md:border-b border-[#1a2a1e]">
           <div className="flex items-center gap-2 mb-1">
             <div className="w-4 h-px bg-[#5b7c6f]" />
@@ -52,7 +52,7 @@ export default async function PortalLayout({
         </div>
       </aside>
 
-      <main className="flex-1 min-w-0 w-full min-h-screen overflow-x-hidden">
+      <main className="flex-1 min-w-0 h-full overflow-hidden">
         {children}
       </main>
     </div>
