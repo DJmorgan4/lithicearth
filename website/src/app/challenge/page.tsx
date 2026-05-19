@@ -146,6 +146,8 @@ export default function ChallengePage() {
       });
       setStreak({ current_streak: 1, longest_streak: 1, total_correct: correct ? 1 : 0, total_attempted: 1, total_photos: 0 });
     }
+    // Award badges (non-blocking)
+    fetch('/api/badges/award', { method: 'POST' }).catch(() => {})
     setSubmitting(false);
   }
 

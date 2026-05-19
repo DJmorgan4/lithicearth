@@ -138,6 +138,9 @@ The note should read like a field researcher's observation — what is significa
 
       if (error) throw error;
 
+      // Award badges (non-blocking)
+      fetch('/api/badges/award', { method: 'POST' }).catch(() => {})
+
       setStatus('success');
       setMessage('Submitted to the archive.');
       setFile(null); setPreview(null); setTitle('');
