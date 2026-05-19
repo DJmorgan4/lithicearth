@@ -11,7 +11,7 @@ import * as THREE from 'three';
 interface ArchiveImage {
   id: string;
   lat: number;
-  lon: number;
+  lng: number;
   image_url: string;
   thumbnail_url?: string;
   uploaded_at: string;
@@ -80,13 +80,13 @@ export default function ArchivePage() {
 
   const loadImages = async () => {
     const { data } = await supabase
-      .from('archive_images')
+      .from('posts')
       .select('*')
-      .order('uploaded_at', { ascending: false });
+      .order('created_at', { ascending: false });
     if (data) {
       setImages(data);
       const today = new Date(); today.setHours(0,0,0,0);
-      const todayCount = data.filter(i => new Date(i.uploaded_at) >= today).length;
+      const todayCount = data.filter(i => new Date(i.created_at) >= today).length;
       const contributors = new Set(data.map((i:ArchiveImage) => i.uploader_name)).size;
       setStats({ total: data.length, today: todayCount, contributors });
     }
@@ -99,7 +99,7 @@ useEffect(() => {
     loadImages();
     checkAuth();
     const ch = supabase.channel('archive')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'archive_images' }, loadImages)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, loadImages)
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, []);
@@ -387,7 +387,7 @@ useEffect(() => {
 
     images.forEach((img) => {
       const color = CATEGORY_COLORS[img.category] || '#D4AF37';
-      const pos   = latLonToVec3(img.lat, img.lon, 1.008);
+      const pos   = latLonToVec3(img.lat, img.lng, 1.008);
 
       // Outer ring
       const ring = new THREE.Mesh(
@@ -407,7 +407,7 @@ useEffect(() => {
       S.markerMeshes.push({ mesh:dot, image:img });
 
       // Field line from marker — electrical connection
-      const end = latLonToVec3(img.lat + (Math.random()-0.5)*8, img.lon + (Math.random()-0.5)*8, 1.002);
+      const end = latLonToVec3(img.lat + (Math.random()-0.5)*8, img.lng + (Math.random()-0.5)*8, 1.002);
       const mid = pos.clone().add(end).multiplyScalar(0.5).normalize().multiplyScalar(1.03);
       const curve = new THREE.QuadraticBezierCurve3(pos, mid, end);
       const geo = new THREE.BufferGeometry().setFromPoints(curve.getPoints(20));

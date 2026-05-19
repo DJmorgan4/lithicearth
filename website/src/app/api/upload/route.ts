@@ -1,7 +1,4 @@
- 
- 
 import { createClient } from '@/lib/supabase/server'
-import { uploadToR2, r2Paths } from '@/lib/r2'
 import { NextResponse } from 'next/server'
 
 export async function POST(request: Request) {
@@ -19,21 +16,30 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'No file provided' }, { status: 400 })
   }
 
-  // Validate type
   const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/heic']
   if (!allowed.includes(file.type)) {
     return NextResponse.json({ error: 'Invalid file type' }, { status: 400 })
   }
 
-  // Max 20MB
   if (file.size > 20 * 1024 * 1024) {
     return NextResponse.json({ error: 'File too large (max 20MB)' }, { status: 400 })
   }
 
-  const buffer = Buffer.from(await file.arrayBuffer())
-  const path = r2Paths.photo(user.id, file.name.replace(/[^a-zA-Z0-9._-]/g, '_'))
+  const ext = file.name.split('.').pop() || 'jpg'
+  const path = `${user.id}/${Date.now()}.${ext}`
+  const bytes = await file.arrayBuffer()
 
-  const url = await uploadToR2(path, buffer, file.type)
+  const { error } = await supabase.storage
+    .from('archive-photos')
+    .upload(path, bytes, { contentType: file.type, upsert: false })
 
-  return NextResponse.json({ url, path })
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  const { data: { publicUrl } } = supabase.storage
+    .from('archive-photos')
+    .getPublicUrl(path)
+
+  return NextResponse.json({ url: publicUrl, path })
 }
