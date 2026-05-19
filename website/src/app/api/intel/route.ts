@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'lat and lng required' }, { status: 400 })
   }
 
-  const engineUrl = process.env.GEO_API_URL || 'http://127.0.0.1:8000'
+  const engineUrl = process.env.GEO_API_URL || 'http://127.0.0.1:8020'
 
   try {
     const res = await fetch(`${engineUrl}/analyze?lat=${lat}&lng=${lng}`, { signal: AbortSignal.timeout(20000) })
