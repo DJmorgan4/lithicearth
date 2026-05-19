@@ -32,9 +32,31 @@ function classifyIntent(q: string): string {
 
 // ── Geocoder ──────────────────────────────────────────────────────────
 async function geocodeQuery(q: string) {
-  const match = q.match(/\b(?:near|around|in|at|within\s+\d+\s+(?:miles?|hours?)\s+of)\s+(.+?)(?:\s+(?:for|with|that|where|to|and|,)|$)/i)
-  const place = match?.[1]?.replace(/[?.!]/g, '').trim()
+  // Try multiple extraction strategies in order of specificity
+
+  // 1. Explicit near/in/around pattern
+  const nearMatch = q.match(/\b(?:near|around|in|at|within\s+\d+\s+(?:miles?|hours?)\s+of)\s+([A-Za-z][\w\s,\.]+?)(?:\s+(?:I |for|with|that|where|to|so|and|,|\.|$))/i)
+
+  // 2. "City, State" pattern anywhere in query (e.g. "McKinney, Texas" or "McKinney, TX")
+  const cityStateMatch = q.match(/\b([A-Z][a-zA-Z\s]+,\s*(?:Texas|TX|Oklahoma|OK|Louisiana|LA|Arkansas|AR|New Mexico|NM|Colorado|CO|Kansas|KS|Missouri|MO))\b/i)
+
+  // 3. Known Texas city names directly mentioned
+  const texasCities = ['mckinney','dallas','houston','austin','san antonio','fort worth','lubbock','amarillo','waco','tyler','nacogdoches','lufkin','conroe','huntsville','bastrop','kerrville','fredericksburg','marble falls','llano','mason','junction','uvalde','del rio','laredo','corpus christi','victoria','bay city','beaumont','port arthur','longview','marshall','texarkana','abilene','midland','odessa','san angelo','el paso','alpine','marfa','presidio','eagle pass','crystal city','edinburg','mcallen','brownsville','harlingen','kingsville','alice','beeville','cuero','seguin','new braunfels','san marcos','buda','kyle','cedar park','round rock','georgetown','taylor','temple','killeen','waco','corsicana','palestine','jacksonville','henderson','carthage','center','san augustine','jasper','woodville','livingston','lufkin','crockett','huntsville','bryan','college station','brenham','la grange','columbus','richmond','sugar land','pearland','league city','galveston','alvin','angleton','lake jackson','freeport','clute','el campo','wharton','bay city','edna','cuero','yoakum','shiner','gonzales','lockhart','luling','slaton','brownfield','lamesa','seminole','monahans','pecos','fort stockton','ozona','sonora','brady','san saba','lampasas','burnet','marble falls','fredericksburg','kerrville','comfort','boerne','helotes','leon valley','kirby','schertz','converse','universal city','live oak','selma','cibolo','new braunfels','seguin','luling','gonzales']
+  const tl = q.toLowerCase()
+  const cityFound = texasCities.find(c => tl.includes(c))
+
+  let place: string | null = null
+
+  if (nearMatch?.[1]) {
+    place = nearMatch[1].replace(/[?.!]/g, '').trim()
+  } else if (cityStateMatch?.[1]) {
+    place = cityStateMatch[1].trim()
+  } else if (cityFound) {
+    place = cityFound + ', Texas'
+  }
+
   if (!place || place.length < 3) return null
+
   try {
     const res = await fetch(
       `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(place)}&countrycodes=us`,
