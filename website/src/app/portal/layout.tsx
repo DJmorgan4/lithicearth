@@ -29,8 +29,9 @@ export default async function PortalLayout({
         </div>
 
         <nav className="flex-1 p-3 md:p-4 flex md:flex-col gap-1 md:space-y-1 overflow-x-auto">
-          <NavItem href="/portal" icon={<FolderOpen size={14} />} label="Projects" />
-          <NavItem href="/portal/viewer" icon={<Globe size={14} />} label="Viewer" />
+          <NavItem href="/portal" icon={<FolderOpen size={14} />} label="Dashboard" />
+          <NavItem href="/portal/globe" icon={<Globe size={14} />} label="Globe" />
+          <NavItem href="/portal/viewer" icon={<Layers size={14} />} label="Viewer" />
           <NavItem href="/portal/layers" icon={<Layers size={14} />} label="Data Layers" />
           <NavItem href="/portal/reports" icon={<FileText size={14} />} label="Reports" />
         </nav>
