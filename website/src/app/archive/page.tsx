@@ -67,6 +67,7 @@ export default function ArchivePage() {
   const [camHeight,       setCamHeight]       = useState(2.5);
   const [isDragging,      setIsDragging]      = useState(false);
   const [isLoggedIn,      setIsLoggedIn]      = useState(false);
+  const [globeMode,       setGlobeMode]       = useState<'explorer'|'archive'>('archive');
 
   // ── Load data ────────────────────────────────────────────────────────────
   // ── Three.js globe ───────────────────────────────────────────────────────
@@ -378,6 +379,14 @@ useEffect(() => {
     };
   }, []);
 
+  // ── Show/hide markers based on globe mode ────────────────────────────────
+  useEffect(() => {
+    const S = stateRef.current;
+    if (!S.markerGroup) return;
+    S.markerGroup.visible = globeMode === 'archive';
+    if (globeMode === 'explorer') setSelectedImage(null);
+  }, [globeMode]);
+
   // ── Update markers when images change ────────────────────────────────────
   useEffect(() => {
     const S = stateRef.current;
@@ -593,15 +602,25 @@ useEffect(() => {
               {selectedImage.title}
             </p>
             <p className="text-[9px] text-white/30 tracking-[0.3em] uppercase mb-3">{selectedImage.location_name}</p>
-            {selectedImage.description && (
-              <p className="text-[11px] text-white/50 leading-relaxed mb-4" style={{fontFamily:'"Cormorant Garamond","Georgia",serif'}}>
+            {(selectedImage as any).astra_caption && (
+              <p className="text-[11px] leading-relaxed mb-3" style={{fontFamily:'"Cormorant Garamond","Georgia",serif',color:'rgba(212,175,55,0.7)',fontStyle:'italic'}}>
+                {(selectedImage as any).astra_caption}
+              </p>
+            )}
+            {selectedImage.description && !(selectedImage as any).astra_caption && (
+              <p className="text-[11px] text-white/50 leading-relaxed mb-3" style={{fontFamily:'"Cormorant Garamond","Georgia",serif'}}>
                 {selectedImage.description}
+              </p>
+            )}
+            {selectedImage.lat && selectedImage.lng && (
+              <p className="text-[9px] text-white/20 tracking-[0.15em] mb-3 font-mono">
+                {Number(selectedImage.lat).toFixed(4)}, {Number(selectedImage.lng).toFixed(4)}
               </p>
             )}
             <div className="flex items-center justify-between pt-3" style={{borderTop:'1px solid rgba(255,255,255,0.06)'}}>
               <div>
-                <p className="text-[8px] text-[#D4AF37]/50 tracking-[0.3em] uppercase">{selectedImage.uploader_name}</p>
-                <p className="text-[8px] text-white/20 mt-0.5">{timeAgo(selectedImage.uploaded_at)}</p>
+                <p className="text-[8px] text-[#D4AF37]/50 tracking-[0.3em] uppercase">{(selectedImage as any).uploader_name || 'Anonymous'}</p>
+                <p className="text-[8px] text-white/20 mt-0.5">{new Date((selectedImage as any).created_at || (selectedImage as any).uploaded_at || '').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</p>
               </div>
               <span className="text-[7px] tracking-[0.3em] uppercase px-2 py-1"
                 style={{border:'1px solid rgba(212,175,55,0.2)',color:'rgba(212,175,55,0.5)'}}>
@@ -611,6 +630,26 @@ useEffect(() => {
           </div>
         </div>
       )}
+
+      {/* ── Globe mode toggle ── */}
+      <div className="absolute top-24 left-1/2 -translate-x-1/2 z-20 pointer-events-auto flex"
+        style={{background:'rgba(0,0,0,0.75)',backdropFilter:'blur(16px)',border:'1px solid rgba(212,175,55,0.18)'}}>
+        <button onClick={()=>setGlobeMode('explorer')}
+          style={{padding:'8px 20px',fontSize:9,letterSpacing:'0.2em',fontFamily:'Jost,sans-serif',
+            background: globeMode==='explorer' ? 'rgba(212,175,55,0.15)' : 'transparent',
+            color: globeMode==='explorer' ? '#D4AF37' : 'rgba(255,255,255,0.3)',
+            border:'none',cursor:'pointer',transition:'all 0.2s'}}>
+          EXPLORER
+        </button>
+        <div style={{width:1,background:'rgba(212,175,55,0.18)'}}/>
+        <button onClick={()=>setGlobeMode('archive')}
+          style={{padding:'8px 20px',fontSize:9,letterSpacing:'0.2em',fontFamily:'Jost,sans-serif',
+            background: globeMode==='archive' ? 'rgba(212,175,55,0.15)' : 'transparent',
+            color: globeMode==='archive' ? '#D4AF37' : 'rgba(255,255,255,0.3)',
+            border:'none',cursor:'pointer',transition:'all 0.2s'}}>
+          ARCHIVED PLANET
+        </button>
+      </div>
 
       {/* ── Status bar ── */}
       <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 pointer-events-none"
@@ -627,10 +666,10 @@ useEffect(() => {
           </div>
           <div className="w-px h-4 bg-[#D4AF37]/15"/>
           <span className="text-[8px] text-white/25 tracking-[0.15em] uppercase">
-            Scroll to zoom &nbsp;·&nbsp; Drag to rotate &nbsp;·&nbsp; Right-click to pin
+            Scroll to zoom &nbsp;·&nbsp; Drag to rotate &nbsp;·&nbsp; Click pin to view
           </span>
           <div className="w-px h-4 bg-[#D4AF37]/15"/>
-          <span className="text-[8px] text-[#D4AF37]/40 font-mono">{stats.total} sites archived</span>
+          <span className="text-[8px] text-[#D4AF37]/40 font-mono">{stats.total} archived</span>
         </div>
       </div>
 
