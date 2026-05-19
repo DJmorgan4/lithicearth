@@ -38,7 +38,7 @@ interface LeaderboardEntry {
   current_streak: number;
   total_correct: number;
   total_photos: number;
-  uploader_name: string;
+  uploader_name?: string;
 }
 
 interface AstraMsg { role: 'user' | 'astra'; text: string; }
@@ -69,7 +69,7 @@ export default function ProfilePage() {
     const [streakRes, postsRes, lbRes] = await Promise.allSettled([
       supabase.from('user_streaks').select('*').eq('user_id', user.id).single(),
       supabase.from('posts').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).limit(20),
-      supabase.from('user_streaks').select('user_id, current_streak, total_correct, total_photos').order('current_streak', { ascending: false }).limit(10),
+      supabase.from('user_streaks').select('user_id, current_streak, total_correct, total_photos, uploader_name').order('current_streak', { ascending: false }).limit(10),
     ]);
 
     if (streakRes.status === 'fulfilled') setStreak(streakRes.value.data);
