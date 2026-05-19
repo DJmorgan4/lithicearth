@@ -18,6 +18,7 @@ export function Navigation({ onSignInClick, archiveAction }: NavigationProps) {
 
   const links = [
     { href: '/archive', label: 'Archive' },
+    { href: '/challenge', label: 'Challenge' },
     { href: '/about', label: 'About' },
     { href: '/contribute', label: 'Contribute' },
   ];
