@@ -414,6 +414,8 @@ export default function PortalGlobe() {
   const [selectedAstraCandidate, setSelectedAstraCandidate] = useState<AstraCandidate | null>(null);
   const [expeditionMode, setExpeditionMode] = useState(false);
   const [scanResult, setScanResult] = useState<any>(null);
+  const [nexusResult, setNexusResult] = useState<any>(null);
+  const [nexusLoading, setNexusLoading] = useState(false);
   const [scanLoading, setScanLoading] = useState(false);
 
   const supabase = createClient();
@@ -430,8 +432,8 @@ export default function PortalGlobe() {
   const handleGlobeClick = useCallback(async (lat: number, lng: number) => {
     setReadout(buildReadout(lat, lng));
     setFlagDone(false); setShowProjectPicker(false); setIntel(null); setIntelLoading(true);
-    setScanResult(null); setScanLoading(true);
-    // Parallel: intel analyze + MSIGI scan
+    setScanResult(null); setScanLoading(true); setNexusResult(null); setNexusLoading(true);
+    // Parallel: intel analyze + MSIGI scan + NEXUS signal fusion
     await Promise.allSettled([
       fetch(`/api/intel?lat=${lat}&lng=${lng}`)
         .then(r => r.json()).then(setIntel).catch(() => {})
@@ -439,6 +441,9 @@ export default function PortalGlobe() {
       fetch(`/api/scan?lat=${lat}&lng=${lng}&radius=500`)
         .then(r => r.json()).then(setScanResult).catch(() => {})
         .finally(() => setScanLoading(false)),
+      fetch(`/api/nexus/signal?lat=${lat}&lng=${lng}`)
+        .then(r => r.json()).then(d => setNexusResult(d.nexus)).catch(() => {})
+        .finally(() => setNexusLoading(false)),
     ]);
   }, [buildReadout]);
 
@@ -788,6 +793,55 @@ export default function PortalGlobe() {
                     {intel.insights?.map((ins: string, i: number) => (
                       <p key={i} className="text-[#7a8a7d] text-[9px] font-light leading-snug border-l border-[#1a2a1e] pl-2">{ins}</p>
                     ))}
+                  </>
+                )}
+              </div>
+            )}
+            {/* NEXUS Signal Panel */}
+            {(nexusLoading || nexusResult) && (
+              <div className="border-t border-[#1a2a1e] px-4 py-3 space-y-2">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-px bg-[#12A8AC]" />
+                    <span className="text-[#12A8AC] text-[9px] tracking-[0.2em] font-light">NEXUS SIGNAL</span>
+                    {nexusLoading && <span className="text-[#3a4a3e] text-[9px] animate-pulse">fusing...</span>}
+                  </div>
+                  {nexusResult && (
+                    <span className={`text-[9px] tracking-[0.15em] font-light px-2 py-0.5 rounded ${
+                      nexusResult.tier === 'ANOMALY' ? 'bg-red-900/30 text-red-400' :
+                      nexusResult.tier === 'ELEVATED' ? 'bg-yellow-900/30 text-yellow-400' :
+                      nexusResult.tier === 'NOMINAL' ? 'bg-green-900/20 text-[#5b7c6f]' :
+                      'bg-[#1a2a1e] text-[#3a4a3e]'
+                    }`}>{nexusResult.tier}</span>
+                  )}
+                </div>
+                {nexusResult && (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[#3a4a3e] text-[9px] tracking-[0.2em]">FUSION SCORE</span>
+                      <span className="text-[#12A8AC] text-xs font-light">{(nexusResult.score * 100).toFixed(1)}<span className="text-[#3a4a3e] text-[9px]">/100</span></span>
+                    </div>
+                    <div className="w-full h-1 bg-[#1a2a1e] rounded-full overflow-hidden">
+                      <div className="h-full rounded-full transition-all" style={{ width: `${nexusResult.score * 100}%`, backgroundColor: nexusResult.tier === 'ANOMALY' ? '#ef4444' : nexusResult.tier === 'ELEVATED' ? '#eab308' : '#12A8AC' }} />
+                    </div>
+                    <div className="grid grid-cols-5 gap-1 mt-2">
+                      {Object.entries(nexusResult.signals || {}).map(([k, v]: [string, any]) => (
+                        <div key={k} className="text-center">
+                          <div className="text-[#3a4a3e] text-[7px] tracking-widest uppercase mb-1">{k.slice(0,3)}</div>
+                          <div className="w-full h-6 bg-[#1a2a1e] rounded relative overflow-hidden">
+                            <div className="absolute bottom-0 left-0 right-0 rounded transition-all" style={{ height: `${v * 100}%`, backgroundColor: v > 0.7 ? '#ef4444' : v > 0.5 ? '#eab308' : '#12A8AC', opacity: 0.7 }} />
+                          </div>
+                          <div className="text-[#c8c4ba] text-[7px] mt-0.5">{(v * 100).toFixed(0)}</div>
+                        </div>
+                      ))}
+                    </div>
+                    {nexusResult.sources?.length > 0 && (
+                      <div className="mt-2 space-y-0.5">
+                        {nexusResult.sources.map((s: string, i: number) => (
+                          <div key={i} className="text-[#3a4a3e] text-[8px] font-light">{s}</div>
+                        ))}
+                      </div>
+                    )}
                   </>
                 )}
               </div>
