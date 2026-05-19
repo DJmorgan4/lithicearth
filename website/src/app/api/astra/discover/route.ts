@@ -45,6 +45,10 @@ async function geocodeQuery(q: string) {
   const tl = q.toLowerCase()
   const cityFound = texasCities.find(c => tl.includes(c))
 
+  // Also try to extract any capitalized place name after near/in/around/at
+  const broadMatch = q.match(/\b(?:near|around|in|at|outside|south of|north of|east of|west of|along)\s+([A-Za-z][\w\s]{2,25}?)(?:\s+(?:TX|Texas|County|county|I |for|with|that|where|to|so|and|,|\.|$))/i)
+  const broadPlace = broadMatch?.[1]?.trim()
+
   let place: string | null = null
 
   if (nearMatch?.[1]) {
@@ -53,13 +57,15 @@ async function geocodeQuery(q: string) {
     place = cityStateMatch[1].trim()
   } else if (cityFound) {
     place = cityFound + ', Texas'
+  } else if (broadPlace && broadPlace.length > 2) {
+    place = broadPlace + ', Texas'
   }
 
   if (!place || place.length < 3) return null
 
   try {
     const res = await fetch(
-      `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(place)}&countrycodes=us`,
+      `https://nominatim.openstreetmap.org/search?format=json&limit=3&q=${encodeURIComponent(place + (place.toLowerCase().includes('texas') || place.toLowerCase().includes(' tx') ? '' : ', Texas'))}&countrycodes=us&viewbox=-106.6,25.8,-93.5,36.5&bounded=0`,
       { headers: { 'User-Agent': 'LithicEarth-ASTRA/2.0' }, next: { revalidate: 86400 } }
     )
     const data = await res.json()
@@ -84,7 +90,7 @@ function fallbackCenter(q: string) {
   if (t.includes('piney') || t.includes('pineywoods')) return { lat: 31.2, lng: -94.4 }
   if (t.includes('gulf') || t.includes('coast')) return { lat: 28.5, lng: -96.5 }
   if (t.includes('texas') || t.includes(' tx')) return { lat: 31.5, lng: -99.0 }
-  return { lat: 33.1972, lng: -96.6398 }
+  return { lat: 31.5, lng: -99.0 }  // default: center of Texas
 }
 
 function meters(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
