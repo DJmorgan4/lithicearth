@@ -58,3 +58,4 @@ SAR/
 maps.rtfd/
 __pycache__/
 *.pyc
+data/bathy/
