@@ -27,7 +27,19 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  const { data: { user } } = await supabase.auth.getUser()
+  let user = null
+  try {
+    const result = await Promise.race([
+      supabase.auth.getUser(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('auth timeout')), 5000)
+      ),
+    ])
+    user = result.data.user
+  } catch {
+    // Supabase slow/unreachable — fail closed: treat as logged out
+    user = null
+  }
 
   if (request.nextUrl.pathname.startsWith('/portal') && !user) {
     const loginUrl = request.nextUrl.clone()
