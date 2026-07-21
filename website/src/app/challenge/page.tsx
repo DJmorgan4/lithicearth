@@ -113,6 +113,26 @@ function hashStr(s: string) {
   for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
   return Math.abs(h);
 }
+// No-repeat daily draw: each N-day cycle is a seeded shuffle of all N sites,
+// so every site appears exactly once per cycle before anything repeats.
+// Deterministic — every player worldwide gets the same site on the same day.
+function dailyDrawIndex(day: number, n: number) {
+  const cycle = Math.floor(day / n);
+  const pos = ((day % n) + n) % n;
+  let seed = (hashStr('lithic-cycle-' + cycle) >>> 0) || 1;
+  const rand = () => {
+    seed ^= seed << 13; seed >>>= 0;
+    seed ^= seed >>> 17;
+    seed ^= seed << 5; seed >>>= 0;
+    return seed / 4294967296;
+  };
+  const idx = Array.from({ length: n }, (_, i) => i);
+  for (let i = n - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [idx[i], idx[j]] = [idx[j], idx[i]];
+  }
+  return idx[pos];
+}
 function proximitySquares(dist: number, correct: boolean) {
   if (correct) return '🟩🟩🟩🟩🟩';
   const pct = Math.max(0, 1 - dist / 20000);
@@ -161,15 +181,15 @@ function TheDig() {
   const supabase = createClient();
   const countdown = useCountdown();
 
+  const dayNumber = useMemo(() => Math.floor(Date.parse(todayISO) / 86400000), [todayISO]);
   const answer = useMemo(
-    () => (sites.length > 0 ? sites[hashStr(todayISO + 'dig') % sites.length] : null),
-    [sites, todayISO]
+    () => (sites.length > 0 ? sites[dailyDrawIndex(dayNumber, sites.length)] : null),
+    [sites, dayNumber]
   );
   const tomorrowRegion = useMemo(() => {
     if (sites.length === 0) return '';
-    const t = new Date(Date.now() + 86400000).toISOString().split('T')[0];
-    return sites[hashStr(t + 'dig') % sites.length].region;
-  }, [sites]);
+    return sites[dailyDrawIndex(dayNumber + 1, sites.length)].region;
+  }, [sites, dayNumber]);
 
   const suggestions = useMemo(() => {
     const q = input.trim().toLowerCase();
