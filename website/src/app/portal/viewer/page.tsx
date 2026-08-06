@@ -1,12 +1,10 @@
- 
- 
 'use client'
 import { useEffect, useRef, useState, useCallback, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import {
-  X, Layers, Clock, Download, Flag, ChevronDown, ChevronUp,
+  X, Layers, ChevronDown, ChevronUp,
   Copy, Check, ArrowLeft, Crosshair, AlertCircle, Radio,
-  Thermometer, Mountain, Eye, Atom, Droplets, Zap
+  Thermometer, Mountain, Eye, Atom, Zap, History, Plus
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
@@ -68,6 +66,44 @@ interface LayerDef {
   available: boolean
   cdseAuth?: boolean
 }
+
+// ── Historical overlay types ───────────────────────────────────────────
+// Rows come from public.historical_maps via the historical_maps_in_bbox
+// RPC. Three delivery kinds:
+//   xyz     — a {z}/{x}/{y} template (Georeferencer WMTS→XYZ, gdal2tiles, COG)
+//   wms     — a WMS GetMap endpoint (Klokan Georeferencer exposes these)
+//   allmaps — an IIIF Georeference Annotation, warped client-side
+type HistoricalKind = 'xyz' | 'wms' | 'allmaps'
+
+interface HistoricalMap {
+  id: string
+  title: string
+  year: number | null
+  publisher: string | null
+  source: string
+  kind: HistoricalKind
+  tile_url: string | null
+  wms_url: string | null
+  wms_layer: string | null
+  annotation_url: string | null
+  min_zoom: number | null
+  max_zoom: number | null
+  attribution: string
+  license: string
+  proxy: boolean
+  /** [west, south, east, north] */
+  bbox: [number, number, number, number]
+}
+
+interface ActiveHistorical {
+  map: HistoricalMap
+  opacity: number
+}
+
+/** Licenses clear for commercial client deliverables. Everything else is
+ *  viewer-only and gets stripped from report export. */
+const COMMERCIAL_OK = new Set(['public-domain', 'cc0', 'licensed'])
+
 interface IntelData {
   location: { lat: number; lng: number }
   measurements: {
@@ -136,15 +172,16 @@ interface ScanData {
 }
 
 // ── Layer definitions ──────────────────────────────────────────────────
+// NOTE: duplicate cdse_sar_vv / cdse_sar_vh entries removed (they pointed
+// at the same WMS layers as the IW pair).
 const LAYER_DEFS: LayerDef[] = [{
     id: 'satellite', label: 'Satellite Imagery', group: 'Base', color: '#38bdf8', tileUrl: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', opacity: 1, active: true, source: 'Esri World Imagery', available: true, }, {
     id: 'terrain', label: 'Terrain / Hillshade', group: 'Base', color: '#fb923c', tileUrl: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Shaded_Relief/MapServer/tile/{z}/{y}/{x}', opacity: 0.6, active: false, source: 'Esri World Shaded Relief', available: true, }, {
+    id: 'topo', label: 'USGS Topo', group: 'Base', color: '#fbbf24', tileUrl: 'https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}', opacity: 0.7, active: false, source: 'USGS National Map', available: true, }, {
     id: 'hydro', label: 'Hydrology / NHD', group: 'Environmental', color: '#06b6d4', wmsUrl: 'https://hydro.nationalmap.gov/arcgis/services/NHDPlus_HR/MapServer/WMSServer', wmsLayer: 'NHDFlowline', opacity: 0.8, active: false, source: 'USGS NHD', available: true, }, {
     id: 'fema', label: 'FEMA Floodplain', group: 'Environmental', color: '#4ade80', wmsUrl: 'https://hazards.fema.gov/gis/nfhl/services/public/NFHLWMS/MapServer/WMSServer', wmsLayer: '28', opacity: 0.65, active: false, source: 'FEMA NFHL', available: true, }, {
     id: 'nwi', label: 'Wetlands (NWI)', group: 'Environmental', color: '#34d399', wmsUrl: 'https://www.fws.gov/wetlandsmapper/rest/services/Wetlands/MapServer/WMSServer', wmsLayer: '0', opacity: 0.7, active: false, source: 'USFWS NWI', available: true, }, {
     id: 'geology', label: 'Geologic Map', group: 'Geophysical', color: '#a78bfa', wmsUrl: 'https://mrdata.usgs.gov/services/geology/wms', wmsLayer: 'geol_bg', opacity: 0.55, active: false, source: 'USGS State Geologic Maps', available: true, }, {
-    id: 'topo', label: 'USGS Topo', group: 'Base', color: '#fbbf24', tileUrl: 'https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}', // maxZoom 16
-    opacity: 0.7, active: false, source: 'USGS National Map', available: true, }, {
     id: 'lidar', label: 'LiDAR Bare Earth', group: 'Geophysical', color: '#f59e0b', tileUrl: 'https://index.nationalmap.gov/arcgis/rest/services/3DEPElevationIndex/MapServer/tile/{z}/{y}/{x}', opacity: 0.7, active: false, source: 'USGS 3DEP LiDAR Index', available: true, }, {
     id: 'lidar_hs', label: 'LiDAR Hillshade', group: 'Geophysical', color: '#fcd34d', wmsUrl: 'https://elevation.nationalmap.gov/arcgis/services/3DEPElevation/ImageServer/WMSServer', wmsLayer: '3DEPElevation:Hillshade Gray', opacity: 0.6, active: false, source: 'USGS 3DEP Elevation', available: true, }, {
     id: 'lidar_1m', label: 'LiDAR 1m (High Res)', group: 'Geophysical', color: '#f97316', wmsUrl: 'https://elevation.nationalmap.gov/arcgis/services/3DEPElevation/ImageServer/WMSServer', wmsLayer: '3DEPElevation:Hillshade Multidirectional', opacity: 0.7, active: false, source: 'USGS 3DEP 1m LiDAR', available: true, }, {
@@ -155,23 +192,21 @@ const LAYER_DEFS: LayerDef[] = [{
     id: 'cdse_geology', label: 'Geology (S2)', group: 'Geophysical', color: '#a78bfa', wmsUrl: 'https://sh.dataspace.copernicus.eu/ogc/wms/19beb6e6-941f-4716-aa8e-52f78bb315c1', wmsLayer: 'GEOLOGY', opacity: 0.75, active: false, source: 'Copernicus S2 L2A', available: true, cdseAuth: true, }, {
     id: 'cdse_sar_iw_vv', label: 'SAR IW-VV dB (Live)', group: 'Radar', color: '#4ade80', wmsUrl: 'https://sh.dataspace.copernicus.eu/ogc/wms/38df2b92-62bd-4b7d-a4db-94f011c7b386', wmsLayer: 'IW_VV_DB', opacity: 0.9, active: false, source: 'Copernicus S1 GRD', available: true, cdseAuth: true, }, {
     id: 'cdse_sar_iw_vh', label: 'SAR IW-VH dB (Live)', group: 'Radar', color: '#86efac', wmsUrl: 'https://sh.dataspace.copernicus.eu/ogc/wms/38df2b92-62bd-4b7d-a4db-94f011c7b386', wmsLayer: 'IW-VH-DB', opacity: 0.9, active: false, source: 'Copernicus S1 GRD', available: true, cdseAuth: true, }, {
-    id: 'cdse_sar_vv', label: 'SAR VV dB (Live)', group: 'Radar', color: '#4ade80', wmsUrl: 'https://sh.dataspace.copernicus.eu/ogc/wms/38df2b92-62bd-4b7d-a4db-94f011c7b386', wmsLayer: 'IW_VV_DB', opacity: 0.9, active: false, source: 'Copernicus S1 IW', available: true, cdseAuth: true, }, {
-    id: 'cdse_sar_vh', label: 'SAR VH dB (Live)', group: 'Radar', color: '#86efac', wmsUrl: 'https://sh.dataspace.copernicus.eu/ogc/wms/38df2b92-62bd-4b7d-a4db-94f011c7b386', wmsLayer: 'IW-VH-DB', opacity: 0.9, active: false, source: 'Copernicus S1 IW', available: true, cdseAuth: true, }, {
     id: 'cdse_ndwi', label: 'NDWI (Water Index)', group: 'Spectral', color: '#0ea5e9', wmsUrl: 'https://sh.dataspace.copernicus.eu/ogc/wms/19beb6e6-941f-4716-aa8e-52f78bb315c1', wmsLayer: 'NDWI', opacity: 0.75, active: false, source: 'Copernicus S2 L2A', available: true, cdseAuth: true, }, {
     id: 'cdse_moisture', label: 'Moisture Index', group: 'Spectral', color: '#38bdf8', wmsUrl: 'https://sh.dataspace.copernicus.eu/ogc/wms/19beb6e6-941f-4716-aa8e-52f78bb315c1', wmsLayer: 'MOISTURE_INDEX', opacity: 0.75, active: false, source: 'Copernicus S2 L2A', available: true, cdseAuth: true, }, {
     id: 'sar', label: 'SAR / Radar', group: 'Radar', color: '#4ade80', opacity: 0.7, active: false, source: 'Sentinel-1 — point readout only', available: false, }, {
     id: 'ndvi', label: 'NDVI Vegetation', group: 'Spectral', color: '#86efac', opacity: 0.75, active: false, source: 'Sentinel-2 — point readout only', available: false, }, {
     id: 'thermal', label: 'Thermal IR', group: 'Thermal', color: '#f87171', opacity: 0.7, active: false, source: 'Landsat-9 — point readout only', available: false, }]
 
-const GROUPS = ['Base', 'Environmental', 'Geophysical', 'Radar', 'Spectral', 'Thermal']
-// Note: Radar/Spectral/Thermal are point-readout only via Lithic Engine
+// FIX: 'Bathymetry' was missing here, so the Lake Lavon layer never
+// rendered in the sidebar even though it was defined above.
+const GROUPS = ['Base', 'Environmental', 'Geophysical', 'Bathymetry', 'Radar', 'Spectral', 'Thermal']
+// Note: unavailable Radar/Spectral/Thermal entries are point-readout only via Lithic Engine
 
 // ── ReadoutRow ─────────────────────────────────────────────────────────
 function ReadoutRow({ label, value, sub, accent }: {
   label: string; value: string; sub?: string; accent?: string
 }) {
-
-
   return (
     <div className="flex items-baseline justify-between gap-2 py-1.5 border-b border-[#1a2a1e] last:border-0">
       <span className="text-[#3a4a3e] text-[9px] tracking-[0.2em] font-light flex-shrink-0">{label}</span>
@@ -198,11 +233,17 @@ function ViewerInner() {
   const polygonPointsRef = useRef<[number, number][]>([])
   const geojsonImportRef = useRef<HTMLInputElement>(null)
   const terrainStartRef = useRef<{ lat: number; lng: number } | null>(null)
+  const terrainLineRef = useRef<any>(null)
+  const scanLayerRef = useRef<any>(null)
   const webglCanvasRef = useRef<HTMLCanvasElement>(null)
+  // Historical overlays live in their own Leaflet pane so they stack above
+  // the basemap but below AOI vectors, markers and the scan layer.
+  const histLayerRefs = useRef<Record<string, any>>({})
 
-  // Sanitize initial coords from URL params
-  const rawLat = parseFloat(searchParams.get('lat') || '0')
-  const rawLng = parseFloat(searchParams.get('lng') || '0')
+  // Sanitize initial coords from URL params.
+  // Defaults to Lake Lavon instead of null island when opened bare.
+  const rawLat = parseFloat(searchParams.get('lat') || '33.03407')
+  const rawLng = parseFloat(searchParams.get('lng') || '-96.48694')
   const initCoords = sanitizeCoords(rawLat, rawLng)
 
   const [layers, setLayers] = useState<LayerDef[]>(() => {
@@ -245,8 +286,41 @@ function ViewerInner() {
   const [temporalMode, setTemporalMode] = useState(false)
   const [webglOverlay, setWebglOverlay] = useState(false)
   const [intelDrawerOpen, setIntelDrawerOpen] = useState(false)
-  const scanLayerRef = useRef<any>(null)
-  const [intelOpen, setIntelOpen] = useState(false)
+
+  // ── Historical overlay state ────────────────────────────────────────
+  const [histResults, setHistResults] = useState<HistoricalMap[]>([])
+  const [histActive, setHistActive] = useState<ActiveHistorical[]>([])
+  const [histLoading, setHistLoading] = useState(false)
+  const [histError, setHistError] = useState<string | null>(null)
+  const [histCollapsed, setHistCollapsed] = useState(false)
+  const [histRange, setHistRange] = useState<[number, number]>([1850, 2010])
+  const [swipe, setSwipe] = useState<number | null>(null)
+  const [registerOpen, setRegisterOpen] = useState(false)
+  const [registerBusy, setRegisterBusy] = useState(false)
+  const [registerForm, setRegisterForm] = useState({
+    title: '', year: '', publisher: '', kind: 'xyz' as HistoricalKind,
+    url: '', attribution: '', license: 'public-domain', proxy: true,
+  })
+
+  // ── Refs mirroring state, for the once-registered Leaflet handlers ──
+  // The map click handler is attached ONE time at init, so its closure
+  // permanently captures the FIRST render's state. Anything it reads
+  // must go through a ref — this stale closure is exactly why terrain
+  // profile mode never fired from map clicks before.
+  const terrainModeRef = useRef(false)
+  useEffect(() => { terrainModeRef.current = terrainMode }, [terrainMode])
+
+  const coordsRef = useRef(initCoords)
+  useEffect(() => { coordsRef.current = coords }, [coords])
+
+  const intelRef = useRef<IntelData | null>(null)
+  useEffect(() => { intelRef.current = intel }, [intel])
+
+  const histRangeRef = useRef(histRange)
+  useEffect(() => { histRangeRef.current = histRange }, [histRange])
+
+  const swipeRef = useRef<number | null>(null)
+  useEffect(() => { swipeRef.current = swipe }, [swipe])
 
   const setAOIModeSafe = useCallback((mode: AOIMode) => {
     aoiModeRef.current = mode
@@ -288,51 +362,6 @@ function ViewerInner() {
     }).addTo(map)
   }, [])
 
-  const applyAOI = useCallback(async (geometry: AOIGeometry, center: { lat: number; lng: number }) => {
-    setAoiGeometry(geometry)
-    setCoords(center)
-    markerRef.current?.setLatLng([center.lat, center.lng])
-    await redrawAOI(geometry)
-    fetchIntel(center.lat, center.lng)
-    fetchScan(center.lat, center.lng)
-    const z = leafletRef.current?.getZoom?.() ?? zoom
-    router.replace(`/portal/viewer?lat=${center.lat}&lng=${center.lng}&zoom=${z}`, { scroll: false })
-    rememberAOI(geometry, center)
-  }, [redrawAOI, router, zoom])
-
-  const saveAOI = useCallback(async () => {
-    if (!aoiGeometry) return
-    setAoiSaveStatus('saving')
-    try {
-      const { data: auth } = await supabase.auth.getUser()
-      const userId = auth?.user?.id
-
-      const payload: any = {
-        source: 'lithicearth_viewer',
-        type: 'aoi',
-        lat: coords.lat,
-        lng: coords.lng,
-        flagged: false,
-        properties: {
-          aoi_mode: aoiMode,
-          geometry_type: aoiGeometry.type,
-          geometry: aoiGeometry,
-          zoom,
-        },
-      }
-
-      if (userId) payload.user_id = userId
-
-      const { error } = await supabase.from('portal_observations').insert(payload)
-      if (error) throw error
-      setAoiSaveStatus('saved')
-    } catch (e) {
-      console.error('AOI save failed', e)
-      setAoiSaveStatus('error')
-    }
-  }, [aoiGeometry, aoiMode, coords.lat, coords.lng, zoom])
-
-
   const rememberAOI = useCallback((geometry: AOIGeometry, center: { lat: number; lng: number }) => {
     const item: SavedAOI = {
       id: `aoi-${Date.now()}`,
@@ -346,74 +375,224 @@ function ViewerInner() {
     setAoiHistory(prev => [item, ...prev].slice(0, 8))
   }, [zoom])
 
-  const exportGeoJSON = useCallback(() => {
-    if (!aoiGeometry) return
-    const feature = {
-      type: 'Feature',
-      properties: {
-        name: `LithicEarth AOI ${coords.lat}, ${coords.lng}`,
-        lat: coords.lat,
-        lng: coords.lng,
-        zoom,
-        generated_by: 'LithicEarth',
-      },
-      geometry: aoiGeometry,
+  // ── HISTORICAL OVERLAYS ─────────────────────────────────────────────
+
+  /**
+   * Swipe compare. Leaflet tile containers are absolutely positioned inside
+   * a mapPane that gets CSS-transformed on every pan, so a percentage
+   * clip-path would drift with the map. Recompute the clip rect in LAYER
+   * point space on every move — same trick leaflet-side-by-side uses.
+   */
+  const updateSwipeClip = useCallback(() => {
+    const map = leafletRef.current
+    if (!map) return
+    const fraction = swipeRef.current
+    const entries = Object.values(histLayerRefs.current)
+
+    if (fraction === null) {
+      entries.forEach((e: any) => {
+        const el = e?.layer?.getContainer?.() ?? e?.layer?._container
+        if (el) el.style.clip = ''
+      })
+      return
     }
-    const blob = new Blob([JSON.stringify(feature, null, 2)], { type: 'application/geo+json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `lithicearth-aoi-${coords.lat}-${coords.lng}.geojson`
-    a.click()
-    URL.revokeObjectURL(url)
-  }, [aoiGeometry, coords.lat, coords.lng, zoom])
 
-  const importGeoJSON = useCallback(async (file: File) => {
-    const text = await file.text()
-    const json = JSON.parse(text)
-    const geometry = json.type === 'Feature' ? json.geometry : json
-    if (!geometry || !['Point', 'Polygon'].includes(geometry.type)) {
-      throw new Error('Unsupported GeoJSON geometry')
-    }
-    const imported = geometry as AOIGeometry
-    const center = imported.type === 'Point'
-      ? sanitizeCoords(imported.coordinates[1], imported.coordinates[0])
-      : polygonCenter(imported.coordinates[0])
-    await applyAOI(imported, center)
-    rememberAOI(imported, center)
-  }, [applyAOI, rememberAOI])
+    const size = map.getSize()
+    const nw = map.containerPointToLayerPoint([0, 0])
+    const se = map.containerPointToLayerPoint([size.x, size.y])
+    const cut = map.containerPointToLayerPoint([size.x * fraction, 0]).x
+    const rect = `rect(${nw.y}px, ${cut}px, ${se.y}px, ${nw.x}px)`
 
-  const copyShareURL = useCallback(() => {
-    const url = `${window.location.origin}/portal/viewer?lat=${coords.lat}&lng=${coords.lng}&zoom=${zoom}`
-    navigator.clipboard.writeText(url)
-    setShareCopied(true)
-    setTimeout(() => setShareCopied(false), 2000)
-  }, [coords.lat, coords.lng, zoom])
+    entries.forEach((e: any) => {
+      const el = e?.layer?.getContainer?.() ?? e?.layer?._container
+      if (el) el.style.clip = rect
+    })
+  }, [])
 
-  const loadSavedAOIs = useCallback(async () => {
-    const local = localStorage.getItem('lithicearth:aoi-history')
-    if (local) setSavedAOIs(JSON.parse(local))
-
-    const { data } = await supabase
-      .from('portal_observations')
-      .select('id, lat, lng, properties, created_at')
-      .eq('type', 'aoi')
-      .order('created_at', { ascending: false })
-      .limit(8)
-
-    if (data?.length) {
-      setSavedAOIs(data.map((row: any) => ({
-        id: row.id,
-        name: `AOI ${row.lat}, ${row.lng}`,
-        geometry: row.properties?.geometry,
-        lat: row.lat,
-        lng: row.lng,
-        zoom: row.properties?.zoom ?? 14,
-        created_at: row.created_at,
-      })).filter((x: SavedAOI) => x.geometry))
+  /** Query the PostGIS catalog for maps intersecting the current view. */
+  const searchHistorical = useCallback(async () => {
+    const map = leafletRef.current
+    if (!map) return
+    setHistLoading(true)
+    setHistError(null)
+    try {
+      const b = map.getBounds()
+      const [from, to] = histRangeRef.current
+      const { data, error } = await supabase.rpc('historical_maps_in_bbox', {
+        w: b.getWest(),
+        s: b.getSouth(),
+        e: b.getEast(),
+        n: b.getNorth(),
+        year_from: from,
+        year_to: to,
+      })
+      if (error) throw error
+      setHistResults((data ?? []) as HistoricalMap[])
+    } catch (err) {
+      console.warn('[viewer] historical catalog query failed', err)
+      setHistError('Catalog unavailable')
+      setHistResults([])
+    } finally {
+      setHistLoading(false)
     }
   }, [])
 
+  const searchHistoricalRef = useRef(searchHistorical)
+  useEffect(() => { searchHistoricalRef.current = searchHistorical }, [searchHistorical])
+
+  const addHistorical = useCallback(async (hm: HistoricalMap) => {
+    const L = (await import('leaflet')).default
+    const map = leafletRef.current
+    if (!map || histLayerRefs.current[hm.id]) return
+
+    const bounds = L.latLngBounds(
+      [hm.bbox[1], hm.bbox[0]],
+      [hm.bbox[3], hm.bbox[2]]
+    )
+    const opacity = 0.7
+    let layer: any = null
+
+    try {
+      if (hm.kind === 'allmaps' && hm.annotation_url) {
+        // Warps the IIIF image client-side — no tiles, no GeoTIFF.
+        // Requires: npm i @allmaps/leaflet
+        const mod: any = await import('@allmaps/leaflet')
+        layer = new mod.WarpedMapLayer(undefined, { pane: 'historical' })
+        layer.addTo(map)
+        await layer.addGeoreferenceAnnotationByUrl(hm.annotation_url)
+        layer.setOpacity?.(opacity)
+      } else if (hm.kind === 'wms' && hm.wms_url && hm.wms_layer) {
+        layer = L.tileLayer.wms(hm.wms_url, {
+          layers: hm.wms_layer,
+          format: 'image/png',
+          transparent: true,
+          opacity,
+          pane: 'historical',
+          bounds,
+          maxZoom: hm.max_zoom ?? 19,
+        })
+        layer.on('tileerror', () => console.warn('[viewer] historical WMS error', hm.id))
+        layer.addTo(map)
+      } else if (hm.tile_url) {
+        // Placeholders stay OUTSIDE the encoded src so Leaflet can fill them
+        // and the proxy route can substitute them server-side.
+        const url = hm.proxy
+          ? `/api/tiles/proxy?src=${encodeURIComponent(hm.tile_url)}&z={z}&x={x}&y={y}`
+          : hm.tile_url
+        layer = L.tileLayer(url, {
+          opacity,
+          pane: 'historical',
+          bounds,
+          minZoom: hm.min_zoom ?? 0,
+          maxZoom: hm.max_zoom ?? 19,
+          crossOrigin: true,
+        })
+        layer.on('tileerror', () => console.warn('[viewer] historical tile error', hm.id))
+        layer.addTo(map)
+      }
+    } catch (err) {
+      console.error('[viewer] failed to add historical overlay', hm.id, err)
+      return
+    }
+
+    if (!layer) return
+    histLayerRefs.current[hm.id] = { layer, meta: hm }
+    setHistActive(prev => [...prev, { map: hm, opacity }])
+    updateSwipeClip()
+  }, [updateSwipeClip])
+
+  const removeHistorical = useCallback((id: string) => {
+    const entry = histLayerRefs.current[id]
+    if (entry?.layer) {
+      try { entry.layer.remove() } catch { /* already gone */ }
+    }
+    delete histLayerRefs.current[id]
+    setHistActive(prev => prev.filter(a => a.map.id !== id))
+  }, [])
+
+  const setHistoricalOpacity = useCallback((id: string, value: number) => {
+    const entry = histLayerRefs.current[id]
+    entry?.layer?.setOpacity?.(value)
+    setHistActive(prev => prev.map(a => a.map.id === id ? { ...a, opacity: value } : a))
+  }, [])
+
+  /** Bring the year band forward/back one decade across all active overlays. */
+  const toggleHistorical = useCallback((hm: HistoricalMap) => {
+    if (histLayerRefs.current[hm.id]) removeHistorical(hm.id)
+    else addHistorical(hm)
+  }, [addHistorical, removeHistorical])
+
+  const registerHistorical = useCallback(async () => {
+    const map = leafletRef.current
+    if (!map || !registerForm.title || !registerForm.url) return
+    setRegisterBusy(true)
+    try {
+      const b = map.getBounds()
+      const { error } = await supabase.rpc('register_historical_map', {
+        p_title: registerForm.title,
+        p_year: registerForm.year ? parseInt(registerForm.year, 10) : null,
+        p_publisher: registerForm.publisher || null,
+        p_source: 'manual',
+        p_kind: registerForm.kind,
+        p_tile_url: registerForm.kind === 'xyz' ? registerForm.url : null,
+        p_annotation_url: registerForm.kind === 'allmaps' ? registerForm.url : null,
+        p_wms_url: registerForm.kind === 'wms' ? registerForm.url : null,
+        p_wms_layer: null,
+        p_attribution: registerForm.attribution || 'Unattributed',
+        p_license: registerForm.license,
+        p_proxy: registerForm.proxy,
+        p_w: b.getWest(),
+        p_s: b.getSouth(),
+        p_e: b.getEast(),
+        p_n: b.getNorth(),
+      })
+      if (error) throw error
+      setRegisterForm(f => ({ ...f, title: '', year: '', url: '' }))
+      setRegisterOpen(false)
+      await searchHistoricalRef.current()
+    } catch (err) {
+      console.error('[viewer] register historical map failed', err)
+      setHistError('Register failed')
+    } finally {
+      setRegisterBusy(false)
+    }
+  }, [registerForm])
+
+  // Re-query when the year band changes.
+  useEffect(() => {
+    if (!leafletRef.current) return
+    const t = setTimeout(() => void searchHistoricalRef.current(), 250)
+    return () => clearTimeout(t)
+  }, [histRange])
+
+  // Keep the swipe cut pinned to the viewport through pan/zoom/resize.
+  useEffect(() => {
+    const map = leafletRef.current
+    if (!map) return
+    updateSwipeClip()
+    map.on('move zoom viewreset resize', updateSwipeClip)
+    return () => { map.off('move zoom viewreset resize', updateSwipeClip) }
+  }, [swipe, histActive, updateSwipeClip])
+
+  // ── Fetch intel from engine ──────────────────────────────────────────
+  const fetchIntel = useCallback(async (lat: number, lng: number) => {
+    // Guard — never send invalid coords to engine
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return
+    setIntelLoading(true)
+    setIntelError(false)
+    setIntel(null)
+    try {
+      const res = await fetch(`/api/intel?lat=${lat}&lng=${lng}`)
+      if (!res.ok) throw new Error('engine offline')
+      const data = await res.json()
+      if (data.error) throw new Error(data.error)
+      setIntel(data)
+    } catch {
+      setIntelError(true)
+    } finally {
+      setIntelLoading(false)
+    }
+  }, [])
 
   const clusterCandidates = useCallback((candidates: ScanCandidate[]): ScanCluster[] => {
     const visited = new Set<string>()
@@ -452,62 +631,6 @@ function ViewerInner() {
     return clusters
   }, [])
 
-
-  const generateTerrainProfile = useCallback(async (
-    start: { lat: number; lng: number },
-    end: { lat: number; lng: number }
-  ) => {
-    try {
-      const res = await fetch(
-        `/api/terrain/profile?startLat=${start.lat}&startLng=${start.lng}&endLat=${end.lat}&endLng=${end.lng}&samples=32`
-      )
-
-      if (!res.ok) throw new Error('terrain profile failed')
-
-      const data = await res.json()
-      setTerrainProfile(data.profile)
-    } catch {
-      const samples = 24
-      const points: TerrainProfilePoint[] = []
-      const baseElevation = elev?.value ?? 120
-
-      for (let i = 0; i <= samples; i++) {
-        const t = i / samples
-        const elevation =
-          baseElevation +
-          Math.sin(i / 2.8) * 8 +
-          Math.cos(i / 3.7) * 5
-
-        points.push({
-          distance: Math.round(t * 1000),
-          elevation: Math.round(elevation * 10) / 10,
-        })
-      }
-
-      setTerrainProfile(points)
-    }
-  }, [])
-
-  // ── Fetch intel from engine ──────────────────────────────────────────
-  const fetchIntel = useCallback(async (lat: number, lng: number) => {
-    // Guard — never send invalid coords to engine
-    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return
-    setIntelLoading(true)
-    setIntelError(false)
-    setIntel(null)
-    try {
-      const res = await fetch(`/api/intel?lat=${lat}&lng=${lng}`)
-      if (!res.ok) throw new Error('engine offline')
-      const data = await res.json()
-      if (data.error) throw new Error(data.error)
-      setIntel(data)
-    } catch {
-      setIntelError(true)
-    } finally {
-      setIntelLoading(false)
-    }
-  }, [])
-
   // ── Fetch scan from engine ──────────────────────────────────────────
   const fetchScan = useCallback(async (lat: number, lng: number) => {
     if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return
@@ -541,11 +664,7 @@ function ViewerInner() {
             fillColor: intensity,
             fillOpacity: 0.08,
           }).bindTooltip(
-            `<div style="font-size:10px;font-family:monospace;background:#0b0f0c;border:1px solid #1a2a1e;color:#c8c4ba;padding:4px 8px">
-              <b>ANOMALY CLUSTER</b><br/>
-              members: ${cluster.members.length}<br/>
-              confidence: ${(cluster.score * 100).toFixed(0)}%
-            </div>`
+            `<div style="font-size:10px;font-family:monospace;background:#0b0f0c;border:1px solid #1a2a1e;color:#c8c4ba;padding:4px 8px"><b>ANOMALY CLUSTER</b><br/>members: ${cluster.members.length}<br/>confidence: ${(cluster.score * 100).toFixed(0)}%</div>`
           ).addTo(group)
 
           L.circleMarker([cluster.lat, cluster.lng], {
@@ -576,7 +695,171 @@ function ViewerInner() {
       }
     } catch { /* silent — scan is additive */ }
     finally { setScanLoading(false) }
+  }, [clusterCandidates])
+
+  const applyAOI = useCallback(async (geometry: AOIGeometry, center: { lat: number; lng: number }) => {
+    setAoiGeometry(geometry)
+    setCoords(center)
+    coordsRef.current = center
+    markerRef.current?.setLatLng([center.lat, center.lng])
+    await redrawAOI(geometry)
+    fetchIntel(center.lat, center.lng)
+    fetchScan(center.lat, center.lng)
+    const z = leafletRef.current?.getZoom?.() ?? zoom
+    router.replace(`/portal/viewer?lat=${center.lat}&lng=${center.lng}&zoom=${z}`, { scroll: false })
+    rememberAOI(geometry, center)
+  }, [redrawAOI, router, zoom, fetchIntel, fetchScan, rememberAOI])
+
+  const saveAOI = useCallback(async () => {
+    if (!aoiGeometry) return
+    setAoiSaveStatus('saving')
+    try {
+      const { data: auth } = await supabase.auth.getUser()
+      const userId = auth?.user?.id
+
+      const payload: any = {
+        source: 'lithicearth_viewer',
+        type: 'aoi',
+        lat: coords.lat,
+        lng: coords.lng,
+        flagged: false,
+        properties: {
+          aoi_mode: aoiMode,
+          geometry_type: aoiGeometry.type,
+          geometry: aoiGeometry,
+          zoom,
+          // Provenance: what was on screen when this AOI was captured
+          historical_overlays: histActive.map(a => ({
+            id: a.map.id, title: a.map.title, year: a.map.year, license: a.map.license,
+          })),
+        },
+      }
+
+      if (userId) payload.user_id = userId
+
+      const { error } = await supabase.from('portal_observations').insert(payload)
+      if (error) throw error
+      setAoiSaveStatus('saved')
+    } catch (e) {
+      console.error('AOI save failed', e)
+      setAoiSaveStatus('error')
+    }
+  }, [aoiGeometry, aoiMode, coords.lat, coords.lng, zoom, histActive])
+
+  const exportGeoJSON = useCallback(() => {
+    if (!aoiGeometry) return
+    const feature = {
+      type: 'Feature',
+      properties: {
+        name: `LithicEarth AOI ${coords.lat}, ${coords.lng}`,
+        lat: coords.lat,
+        lng: coords.lng,
+        zoom,
+        generated_by: 'LithicEarth',
+        historical_overlays: histActive.map(a => ({
+          title: a.map.title, year: a.map.year, attribution: a.map.attribution, license: a.map.license,
+        })),
+      },
+      geometry: aoiGeometry,
+    }
+    const blob = new Blob([JSON.stringify(feature, null, 2)], { type: 'application/geo+json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `lithicearth-aoi-${coords.lat}-${coords.lng}.geojson`
+    a.click()
+    URL.revokeObjectURL(url)
+  }, [aoiGeometry, coords.lat, coords.lng, zoom, histActive])
+
+  const importGeoJSON = useCallback(async (file: File) => {
+    const text = await file.text()
+    const json = JSON.parse(text)
+    const geometry = json.type === 'Feature' ? json.geometry : json
+    if (!geometry || !['Point', 'Polygon'].includes(geometry.type)) {
+      throw new Error('Unsupported GeoJSON geometry')
+    }
+    const imported = geometry as AOIGeometry
+    const center = imported.type === 'Point'
+      ? sanitizeCoords(imported.coordinates[1], imported.coordinates[0])
+      : polygonCenter(imported.coordinates[0])
+    await applyAOI(imported, center)
+  }, [applyAOI])
+
+  const copyShareURL = useCallback(() => {
+    const url = `${window.location.origin}/portal/viewer?lat=${coords.lat}&lng=${coords.lng}&zoom=${zoom}`
+    navigator.clipboard.writeText(url)
+    setShareCopied(true)
+    setTimeout(() => setShareCopied(false), 2000)
+  }, [coords.lat, coords.lng, zoom])
+
+  const loadSavedAOIs = useCallback(async () => {
+    const local = localStorage.getItem('lithicearth:aoi-history')
+    if (local) {
+      try { setSavedAOIs(JSON.parse(local)) } catch { /* corrupt storage */ }
+    }
+
+    const { data } = await supabase
+      .from('portal_observations')
+      .select('id, lat, lng, properties, created_at')
+      .eq('type', 'aoi')
+      .order('created_at', { ascending: false })
+      .limit(8)
+
+    if (data?.length) {
+      setSavedAOIs(data.map((row: any) => ({
+        id: row.id,
+        name: `AOI ${row.lat}, ${row.lng}`,
+        geometry: row.properties?.geometry,
+        lat: row.lat,
+        lng: row.lng,
+        zoom: row.properties?.zoom ?? 14,
+        created_at: row.created_at,
+      })).filter((x: SavedAOI) => x.geometry))
+    }
   }, [])
+
+  const generateTerrainProfile = useCallback(async (
+    start: { lat: number; lng: number },
+    end: { lat: number; lng: number }
+  ) => {
+    try {
+      const res = await fetch(
+        `/api/terrain/profile?startLat=${start.lat}&startLng=${start.lng}&endLat=${end.lat}&endLng=${end.lng}&samples=32`
+      )
+
+      if (!res.ok) throw new Error('terrain profile failed')
+
+      const data = await res.json()
+      setTerrainProfile(data.profile)
+    } catch {
+      // Fallback synthetic profile — elevation read via ref so it is the
+      // LIVE intel value, not the stale first-render closure
+      const samples = 24
+      const points: TerrainProfilePoint[] = []
+      const baseElevation = intelRef.current?.measurements?.elevation?.value ?? 120
+
+      for (let i = 0; i <= samples; i++) {
+        const t = i / samples
+        const elevation =
+          baseElevation +
+          Math.sin(i / 2.8) * 8 +
+          Math.cos(i / 3.7) * 5
+
+        points.push({
+          distance: Math.round(t * 1000),
+          elevation: Math.round(elevation * 10) / 10,
+        })
+      }
+
+      setTerrainProfile(points)
+    }
+  }, [])
+
+  // Live pointers for the once-registered map click handler
+  const applyAOIRef = useRef(applyAOI)
+  useEffect(() => { applyAOIRef.current = applyAOI }, [applyAOI])
+  const generateTerrainProfileRef = useRef(generateTerrainProfile)
+  useEffect(() => { generateTerrainProfileRef.current = generateTerrainProfile }, [generateTerrainProfile])
 
   // ── Init Leaflet ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -590,8 +873,15 @@ function ViewerInner() {
         zoom: initialZoom,
         zoomControl: false,
         attributionControl: false,
+        doubleClickZoom: false, // dblclick finishes polygons — zoom was fighting it
       })
       leafletRef.current = map
+
+      // Dedicated pane for historical rasters: above tilePane (200),
+      // below overlayPane (400) so AOI vectors and scan circles stay on top.
+      map.createPane('historical')
+      const histPane = map.getPane('historical')
+      if (histPane) histPane.style.zIndex = '350'
 
       // Base satellite tile
       const satLayer = L.tileLayer(
@@ -613,12 +903,12 @@ function ViewerInner() {
       })
       markerRef.current = L.marker([initCoords.lat, initCoords.lng], { icon }).addTo(map)
 
-      // Click → AOI tools
+      // Click → AOI tools. Every state read goes through a ref (see above).
       map.on('click', async (e: any) => {
         const safe = sanitizeCoords(e.latlng.lat, e.latlng.lng)
         const mode = aoiModeRef.current
 
-        if (terrainMode) {
+        if (terrainModeRef.current) {
           if (!terrainStartRef.current) {
             terrainStartRef.current = safe
             markerRef.current?.setLatLng([safe.lat, safe.lng])
@@ -628,25 +918,21 @@ function ViewerInner() {
           const start = terrainStartRef.current
           terrainStartRef.current = null
 
-          const L = (await import('leaflet')).default
+          const L2 = (await import('leaflet')).default
 
-          L.polyline(
-            [[start.lat, start.lng],
-              [safe.lat, safe.lng]
-            ],
-            {
-              color: '#fb923c',
-              weight: 2,
-              dashArray: '6 4'
-            }
+          // Replace the previous profile line instead of stacking forever
+          terrainLineRef.current?.remove()
+          terrainLineRef.current = L2.polyline(
+            [[start.lat, start.lng], [safe.lat, safe.lng]],
+            { color: '#fb923c', weight: 2, dashArray: '6 4' }
           ).addTo(map)
 
-          await generateTerrainProfile(start, safe)
+          await generateTerrainProfileRef.current(start, safe)
           return
         }
 
         if (mode === 'pin') {
-          await applyAOI({ type: 'Point', coordinates: [safe.lng, safe.lat] }, safe)
+          await applyAOIRef.current({ type: 'Point', coordinates: [safe.lng, safe.lat] }, safe)
           return
         }
 
@@ -663,22 +949,23 @@ function ViewerInner() {
           const east = Math.max(start.lng, safe.lng)
           const south = Math.min(start.lat, safe.lat)
           const north = Math.max(start.lat, safe.lat)
-          const ring: [number, number][] = [[west, south],
+          const ring: [number, number][] = [
+            [west, south],
             [east, south],
             [east, north],
             [west, north],
             [west, south],
           ]
-          await applyAOI({ type: 'Polygon', coordinates: [ring] }, polygonCenter(ring))
+          await applyAOIRef.current({ type: 'Polygon', coordinates: [ring] }, polygonCenter(ring))
           return
         }
 
         if (mode === 'polygon') {
           polygonPointsRef.current = [...polygonPointsRef.current, [safe.lng, safe.lat]]
           aoiGuideLayerRef.current?.remove()
-          const L = (await import('leaflet')).default
+          const L2 = (await import('leaflet')).default
           if (polygonPointsRef.current.length > 1) {
-            aoiGuideLayerRef.current = L.polyline(
+            aoiGuideLayerRef.current = L2.polyline(
               polygonPointsRef.current.map(([lng, lat]) => [lat, lng]),
               { color: '#D4AF37', weight: 1, dashArray: '4 4' }
             ).addTo(map)
@@ -694,7 +981,7 @@ function ViewerInner() {
         polygonPointsRef.current = []
         aoiGuideLayerRef.current?.remove()
         aoiGuideLayerRef.current = null
-        await applyAOI({ type: 'Polygon', coordinates: [ring] }, polygonCenter(ring))
+        await applyAOIRef.current({ type: 'Polygon', coordinates: [ring] }, polygonCenter(ring))
       })
 
       // Mousemove — sanitize to prevent -439 display
@@ -706,8 +993,16 @@ function ViewerInner() {
       map.on('zoom', () => {
         const z = map.getZoom()
         setZoom(z)
-        router.replace(`/portal/viewer?lat=${coords.lat}&lng=${coords.lng}&zoom=${z}`, { scroll: false })
+        // coordsRef, not coords — this closure would otherwise hold the
+        // first render's coordinates forever
+        const c = coordsRef.current
+        router.replace(`/portal/viewer?lat=${c.lat}&lng=${c.lng}&zoom=${z}`, { scroll: false })
       })
+
+      // Historical catalog follows the viewport. Ref indirection again —
+      // this handler is registered once and must not capture stale state.
+      map.on('moveend', () => { void searchHistoricalRef.current() })
+      void searchHistoricalRef.current()
     }
 
     initMap()
@@ -716,12 +1011,65 @@ function ViewerInner() {
     return () => {
       leafletRef.current?.remove()
       leafletRef.current = null
+      histLayerRefs.current = {}
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // ── Anomaly heatmap overlay (previously a dead button) ──────────────
+  // Paints scan candidates as radial-gradient heat blobs on the canvas
+  // over the map, sized to real candidate diameters, redrawn on pan/zoom.
+  useEffect(() => {
+    const canvas = webglCanvasRef.current
+    const map = leafletRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const clear = () => {
+      ctx.setTransform(1, 0, 0, 1, 0, 0)
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+    }
+
+    if (!webglOverlay || !map) { clear(); return }
+
+    const draw = () => {
+      const size = map.getSize()
+      const dpr = window.devicePixelRatio || 1
+      canvas.width = size.x * dpr
+      canvas.height = size.y * dpr
+      canvas.style.width = `${size.x}px`
+      canvas.style.height = `${size.y}px`
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+      ctx.clearRect(0, 0, size.x, size.y)
+
+      const candidates = scan?.candidates ?? []
+      for (const c of candidates) {
+        const pt = map.latLngToContainerPoint([c.lat, c.lng])
+        // Convert candidate diameter (meters) to on-screen pixels
+        const edge = map.latLngToContainerPoint([c.lat + Math.max(c.diameter_m, 60) / 2 / 111320, c.lng])
+        const radius = Math.max(16, Math.abs(pt.y - edge.y) * 2.5)
+        const rgb = c.score > 0.7 ? '239,68,68' : c.score > 0.4 ? '245,158,11' : '18,168,172'
+        const g = ctx.createRadialGradient(pt.x, pt.y, 0, pt.x, pt.y, radius)
+        g.addColorStop(0, `rgba(${rgb},${0.28 + c.score * 0.35})`)
+        g.addColorStop(1, `rgba(${rgb},0)`)
+        ctx.fillStyle = g
+        ctx.beginPath()
+        ctx.arc(pt.x, pt.y, radius, 0, Math.PI * 2)
+        ctx.fill()
+      }
+    }
+
+    draw()
+    map.on('move zoom viewreset resize', draw)
+    return () => {
+      map.off('move zoom viewreset resize', draw)
+      clear()
+    }
+  }, [webglOverlay, scan])
 
   // ── Layer toggle ─────────────────────────────────────────────────────
   const toggleLayer = useCallback(async (id: string) => {
-    console.log('[viewer] toggle layer', id)
     const L = (await import('leaflet')).default
     const map = leafletRef.current
     if (!map) return
@@ -735,8 +1083,7 @@ function ViewerInner() {
         if (l.tileUrl) {
           const tileMaxZoom = l.id === 'topo' ? 16 : 19
           const tl = L.tileLayer(l.tileUrl, { maxZoom: tileMaxZoom, opacity: l.opacity })
-          tl.on('tileload', () => console.log('[viewer] tile loaded', id))
-          tl.on('tileerror', (e: any) => console.warn('[viewer] tile error', id, e))
+          tl.on('tileerror', (err: any) => console.warn('[viewer] tile error', id, err))
           tl.addTo(map)
           layerRefs.current[id] = tl
         } else if (l.wmsUrl && l.wmsLayer) {
@@ -756,8 +1103,7 @@ function ViewerInner() {
               transparent: true,
               opacity: l.opacity,
             })
-            wl.on('tileload', () => console.log('[viewer] WMS loaded', id))
-            wl.on('tileerror', (e: any) => console.warn('[viewer] WMS error', id, e))
+            wl.on('tileerror', (err: any) => console.warn('[viewer] WMS error', id, err))
             wl.addTo(map)
             layerRefs.current[id] = wl
           }
@@ -793,8 +1139,10 @@ function ViewerInner() {
       label: 'Current', date: s2meta?.date?.slice(0, 10) ?? '2025-05-10', ndvi: ndvi?.value ?? 0.58, cloud: s2meta?.cloud_cover ?? 4, }, {
       label: 'Projected', date: '2026-03-22', ndvi: ((ndvi?.value ?? 0.58) + 0.06), cloud: 6, }]
 
-  const ndviDelta =
-    temporalScenes[1].ndvi - temporalScenes[0].ndvi
+  const ndviDelta = temporalScenes[1].ndvi - temporalScenes[0].ndvi
+
+  const activeHistIds = new Set(histActive.map(a => a.map.id))
+  const restrictedCount = histActive.filter(a => !COMMERCIAL_OK.has(a.map.license)).length
 
   useEffect(() => {
     if (aoiHistory.length) {
@@ -805,8 +1153,6 @@ function ViewerInner() {
   useEffect(() => {
     loadSavedAOIs()
   }, [loadSavedAOIs])
-
-
 
   return (
     <div className="flex h-screen bg-[#0a0e0b] overflow-hidden font-light">
@@ -876,7 +1222,248 @@ function ViewerInner() {
                 </div>
               )
             })}
+
+            {/* ── HISTORICAL OVERLAYS ─────────────────────────────────── */}
+            <div className="border-t border-[#1a2a1e]">
+              <button
+                onClick={() => setHistCollapsed(v => !v)}
+                className="w-full flex items-center justify-between px-4 py-2.5 text-[#2a3a2e] hover:text-[#5b7c6f] transition-colors border-b border-[#111a14]"
+              >
+                <span className="flex items-center gap-1.5">
+                  <History size={9} className="text-[#D4AF37]" />
+                  <span className="text-[8px] tracking-[0.3em] text-[#D4AF37]">HISTORICAL</span>
+                </span>
+                <span className="flex items-center gap-1.5">
+                  {histLoading && <span className="text-[7px] text-[#2a3a2e] animate-pulse">SYNC</span>}
+                  {histActive.length > 0 && (
+                    <span className="text-[7px] text-[#D4AF37]">{histActive.length}</span>
+                  )}
+                  {histCollapsed ? <ChevronDown size={9} /> : <ChevronUp size={9} />}
+                </span>
+              </button>
+
+              {!histCollapsed && (
+                <div className="px-4 py-3 space-y-3">
+                  {/* Year band */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[#2a3a2e] text-[7px] tracking-[0.2em]">YEAR BAND</span>
+                      <span className="text-[#5b7c6f] text-[8px] font-mono">
+                        {histRange[0]}–{histRange[1]}
+                      </span>
+                    </div>
+                    <input
+                      type="range" min={1700} max={2010} step={10}
+                      value={histRange[0]}
+                      onChange={e => setHistRange(([, hi]) => [Math.min(Number(e.target.value), hi - 10), hi])}
+                      className="w-full h-px cursor-pointer mb-1"
+                      style={{ accentColor: '#D4AF37' }}
+                      aria-label="Earliest publication year"
+                    />
+                    <input
+                      type="range" min={1700} max={2010} step={10}
+                      value={histRange[1]}
+                      onChange={e => setHistRange(([lo]) => [lo, Math.max(Number(e.target.value), lo + 10)])}
+                      className="w-full h-px cursor-pointer"
+                      style={{ accentColor: '#D4AF37' }}
+                      aria-label="Latest publication year"
+                    />
+                  </div>
+
+                  {/* Swipe compare */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[#2a3a2e] text-[7px] tracking-[0.2em]">SWIPE COMPARE</span>
+                      <button
+                        onClick={() => setSwipe(v => (v === null ? 0.5 : null))}
+                        className={`text-[7px] tracking-[0.15em] px-1.5 py-0.5 border transition-colors ${
+                          swipe !== null
+                            ? 'border-[#D4AF37]/60 text-[#D4AF37]'
+                            : 'border-[#1a2a1e] text-[#5b7c6f] hover:border-[#5b7c6f]'
+                        }`}
+                      >
+                        {swipe !== null ? 'ON' : 'OFF'}
+                      </button>
+                    </div>
+                    {swipe !== null && (
+                      <input
+                        type="range" min={0} max={1} step={0.01}
+                        value={swipe}
+                        onChange={e => setSwipe(Number(e.target.value))}
+                        className="w-full h-px cursor-pointer"
+                        style={{ accentColor: '#D4AF37' }}
+                        aria-label="Swipe position"
+                      />
+                    )}
+                  </div>
+
+                  {/* Active overlays */}
+                  {histActive.length > 0 && (
+                    <div className="border-t border-[#111a14] pt-2 space-y-2">
+                      <p className="text-[#2a3a2e] text-[7px] tracking-[0.2em]">ACTIVE</p>
+                      {histActive.map(a => (
+                        <div key={a.map.id}>
+                          <div className="flex items-center justify-between gap-2 mb-1">
+                            <span className="text-[#c8c4ba] text-[9px] truncate" title={a.map.title}>
+                              {a.map.year ?? '—'} · {a.map.title}
+                            </span>
+                            <button
+                              onClick={() => removeHistorical(a.map.id)}
+                              className="text-[#2a3a2e] hover:text-[#f87171] flex-shrink-0"
+                              aria-label={`Remove ${a.map.title}`}
+                            >
+                              <X size={9} />
+                            </button>
+                          </div>
+                          <input
+                            type="range" min={0} max={1} step={0.02}
+                            value={a.opacity}
+                            onChange={e => setHistoricalOpacity(a.map.id, Number(e.target.value))}
+                            className="w-full h-px cursor-pointer"
+                            style={{ accentColor: '#D4AF37' }}
+                            aria-label={`Opacity for ${a.map.title}`}
+                          />
+                        </div>
+                      ))}
+                      {restrictedCount > 0 && (
+                        <p className="text-[#fbbf24] text-[7px] leading-relaxed border-l border-[#fbbf24]/30 pl-2">
+                          {restrictedCount} overlay{restrictedCount > 1 ? 's are' : ' is'} viewer-only
+                          under its license and will be excluded from report export.
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Results in view */}
+                  <div className="border-t border-[#111a14] pt-2">
+                    <p className="text-[#2a3a2e] text-[7px] tracking-[0.2em] mb-1.5">IN THIS VIEW</p>
+                    {histError && (
+                      <p className="text-[#f87171] text-[8px] leading-relaxed">{histError}</p>
+                    )}
+                    {!histError && !histLoading && histResults.length === 0 && (
+                      <p className="text-[#2a3a2e] text-[8px] leading-relaxed">
+                        No georeferenced maps here in that year band. Widen the band, zoom
+                        out, or register one below.
+                      </p>
+                    )}
+                    <div className="max-h-52 overflow-y-auto">
+                      {histResults.map(r => {
+                        const on = activeHistIds.has(r.id)
+                        return (
+                          <button
+                            key={r.id}
+                            onClick={() => toggleHistorical(r)}
+                            className={`w-full text-left border-b border-[#0f160f] py-1.5 px-1 -mx-1 transition-colors ${
+                              on ? 'bg-[#D4AF37]/5' : 'hover:bg-[#111a14]'
+                            }`}
+                          >
+                            <p className={`text-[9px] truncate ${on ? 'text-[#D4AF37]' : 'text-[#c8c4ba]'}`}>
+                              {r.title}
+                            </p>
+                            <p className="text-[#2a3a2e] text-[7px] truncate">
+                              {r.year ?? 'undated'} · {r.publisher ?? r.source}
+                              {!COMMERCIAL_OK.has(r.license) && (
+                                <span className="text-[#fbbf24]"> · {r.license}</span>
+                              )}
+                            </p>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Register a map */}
+                  <div className="border-t border-[#111a14] pt-2">
+                    <button
+                      onClick={() => setRegisterOpen(v => !v)}
+                      className="w-full flex items-center justify-center gap-1 py-1.5 border border-[#1a2a1e] hover:border-[#5b7c6f] text-[#5b7c6f] text-[7px] tracking-[0.2em] transition-colors"
+                    >
+                      <Plus size={8} /> REGISTER MAP TO THIS VIEW
+                    </button>
+
+                    {registerOpen && (
+                      <div className="mt-2 space-y-1.5">
+                        <p className="text-[#2a3a2e] text-[7px] leading-relaxed">
+                          Footprint is taken from the current viewport — frame the map
+                          extent before saving.
+                        </p>
+                        <input
+                          value={registerForm.title}
+                          onChange={e => setRegisterForm(f => ({ ...f, title: e.target.value }))}
+                          placeholder="Title"
+                          className="w-full bg-[#09100b] border border-[#1a2a1e] px-2 py-1 text-[9px] text-[#c8c4ba] placeholder-[#2a3a2e] focus:border-[#5b7c6f] outline-none"
+                        />
+                        <div className="grid grid-cols-2 gap-1.5">
+                          <input
+                            value={registerForm.year}
+                            onChange={e => setRegisterForm(f => ({ ...f, year: e.target.value }))}
+                            placeholder="Year"
+                            inputMode="numeric"
+                            className="w-full bg-[#09100b] border border-[#1a2a1e] px-2 py-1 text-[9px] text-[#c8c4ba] placeholder-[#2a3a2e] focus:border-[#5b7c6f] outline-none"
+                          />
+                          <select
+                            value={registerForm.kind}
+                            onChange={e => setRegisterForm(f => ({ ...f, kind: e.target.value as HistoricalKind }))}
+                            className="w-full bg-[#09100b] border border-[#1a2a1e] px-2 py-1 text-[9px] text-[#c8c4ba] focus:border-[#5b7c6f] outline-none"
+                          >
+                            <option value="xyz">XYZ tiles</option>
+                            <option value="wms">WMS</option>
+                            <option value="allmaps">Allmaps IIIF</option>
+                          </select>
+                        </div>
+                        <input
+                          value={registerForm.url}
+                          onChange={e => setRegisterForm(f => ({ ...f, url: e.target.value }))}
+                          placeholder={
+                            registerForm.kind === 'allmaps'
+                              ? 'Georeference Annotation URL'
+                              : registerForm.kind === 'wms'
+                              ? 'WMS GetMap endpoint'
+                              : 'https://…/{z}/{x}/{y}.png'
+                          }
+                          className="w-full bg-[#09100b] border border-[#1a2a1e] px-2 py-1 text-[9px] text-[#c8c4ba] placeholder-[#2a3a2e] focus:border-[#5b7c6f] outline-none"
+                        />
+                        <input
+                          value={registerForm.attribution}
+                          onChange={e => setRegisterForm(f => ({ ...f, attribution: e.target.value }))}
+                          placeholder="Attribution (required by most collections)"
+                          className="w-full bg-[#09100b] border border-[#1a2a1e] px-2 py-1 text-[9px] text-[#c8c4ba] placeholder-[#2a3a2e] focus:border-[#5b7c6f] outline-none"
+                        />
+                        <select
+                          value={registerForm.license}
+                          onChange={e => setRegisterForm(f => ({ ...f, license: e.target.value }))}
+                          className="w-full bg-[#09100b] border border-[#1a2a1e] px-2 py-1 text-[9px] text-[#c8c4ba] focus:border-[#5b7c6f] outline-none"
+                        >
+                          <option value="public-domain">public-domain (USGS, LOC)</option>
+                          <option value="cc0">cc0</option>
+                          <option value="licensed">licensed (written permission)</option>
+                          <option value="cc-by-nc-sa">cc-by-nc-sa (Rumsey — viewer only)</option>
+                          <option value="unknown">unknown</option>
+                        </select>
+                        <label className="flex items-center gap-1.5 text-[#5b7c6f] text-[8px]">
+                          <input
+                            type="checkbox"
+                            checked={registerForm.proxy}
+                            onChange={e => setRegisterForm(f => ({ ...f, proxy: e.target.checked }))}
+                            style={{ accentColor: '#D4AF37' }}
+                          />
+                          Route tiles through /api/tiles/proxy
+                        </label>
+                        <button
+                          onClick={registerHistorical}
+                          disabled={registerBusy || !registerForm.title || !registerForm.url}
+                          className="w-full py-1.5 border border-[#D4AF37]/30 hover:border-[#D4AF37]/70 text-[#D4AF37] text-[8px] tracking-[0.2em] transition-colors disabled:opacity-40"
+                        >
+                          {registerBusy ? 'SAVING…' : 'SAVE TO CATALOG'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
+
           <div className="px-4 py-3 border-t border-[#1a2a1e]">
             <button
               onClick={() => router.push('/portal')}
@@ -911,20 +1498,30 @@ function ViewerInner() {
           >−</button>
         </div>
 
-        {/* Mobile intel toggle button */}
-        <button
-          onClick={() => setIntelOpen(v => !v)}
-          className="md:hidden absolute bottom-16 right-4 z-20 bg-[#0b0f0c] border border-[#1a2a1e] px-3 py-2 flex items-center gap-2 hover:border-[#5b7c6f] transition-colors"
-        >
-          <div className="w-1.5 h-1.5 rounded-full bg-[#5b7c6f]" />
-          <span className="text-[#5b7c6f] text-[8px] tracking-[0.2em]">
-            {intelOpen ? 'CLOSE' : 'INTEL'}
-          </span>
-        </button>
-
         {/* Map canvas */}
         <div ref={mapRef} className="w-full h-full" style={{ cursor: 'crosshair' }} />
 
+        {/* Swipe divider — visual only, the clip is applied to the layers */}
+        {swipe !== null && histActive.length > 0 && (
+          <div
+            className="absolute inset-y-0 z-[15] pointer-events-none"
+            style={{ left: `${swipe * 100}%` }}
+          >
+            <div className="w-px h-full bg-[#D4AF37]/70" />
+            <div className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-2 h-2 rotate-45 bg-[#D4AF37]" />
+          </div>
+        )}
+
+        {/* Attribution strip for whatever historical overlays are live */}
+        {histActive.length > 0 && (
+          <div className="absolute bottom-4 right-4 z-20 max-w-xs bg-[#0b0f0c]/90 border border-[#1a2a1e] px-3 py-1.5 pointer-events-none">
+            <p className="text-[#2a3a2e] text-[7px] leading-relaxed">
+              {Array.from(new Set(histActive.map(a => a.map.attribution))).join(' · ')}
+            </p>
+          </div>
+        )}
+
+        {/* Anomaly heatmap canvas — painted by the effect above */}
         {webglOverlay && (
           <canvas
             ref={webglCanvasRef}
@@ -932,7 +1529,7 @@ function ViewerInner() {
           />
         )}
 
-
+        {/* Mobile intel drawer trigger */}
         <button
           onClick={() => setIntelDrawerOpen(true)}
           className="md:hidden fixed bottom-5 right-5 z-40 bg-[#D4AF37] text-black px-4 py-2 text-[10px] tracking-[0.2em] font-light shadow-lg"
@@ -979,7 +1576,7 @@ function ViewerInner() {
       </div>
 
       {/* ── Intel Panel ───────────────────────────────────────────────── */}
-      <div className="hidden md:flex md:w-64 h-full bg-[#0b0f0c] border-l border-[#1a2a1e] flex-col z-10 flex-shrink-0">
+      <div className="hidden md:flex md:w-64 h-full bg-[#0b0f0c] border-l border-[#1a2a1e] flex-col z-10 flex-shrink-0 overflow-y-auto">
         <div className="px-4 py-3 border-b border-[#1a2a1e] flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-1.5 h-1.5 rounded-full bg-[#5b7c6f]" />
@@ -995,7 +1592,7 @@ function ViewerInner() {
           )}
         </div>
 
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1">
           {intelLoading && (
             <div className="p-4 md:p-6 flex flex-col items-center gap-3">
               <div className="w-8 h-8 border border-[#1a2a1e] border-t-[#5b7c6f] rounded-full animate-spin" />
@@ -1135,6 +1732,25 @@ function ViewerInner() {
                 </div>
               )}
 
+              {/* Historical provenance — what old cartography is in play */}
+              {histActive.length > 0 && (
+                <div className="border-t border-[#1a2a1e] pt-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <History size={9} style={{ color: '#D4AF37' }} />
+                    <p className="text-[8px] tracking-[0.25em]" style={{ color: '#D4AF37' }}>HISTORICAL BASE</p>
+                  </div>
+                  {histActive.map(a => (
+                    <ReadoutRow
+                      key={a.map.id}
+                      label={String(a.map.year ?? '—')}
+                      value={a.map.title.length > 22 ? a.map.title.slice(0, 22) + '…' : a.map.title}
+                      sub={`${a.map.source} · ${a.map.license}`}
+                      accent={COMMERCIAL_OK.has(a.map.license) ? '#D4AF37' : '#fbbf24'}
+                    />
+                  ))}
+                </div>
+              )}
+
               {/* Thumbnail */}
               {s2meta?.thumbnail && (
                 <div className="border-t border-[#1a2a1e] pt-3">
@@ -1169,7 +1785,6 @@ function ViewerInner() {
             </div>
             {scan && !scanLoading && (
               <>
-                {/* ── Terrain stats ── */}
                 <div className="flex gap-3 mb-3">
                   <div>
                     <p className="text-[#c8c4ba] text-[11px]">{scan.candidates.length}</p>
@@ -1191,7 +1806,6 @@ function ViewerInner() {
                   <ReadoutRow label="DEM SOURCE" value={scan.terrain?.source ?? '—'} />
                 </div>
 
-                {/* ── Spectral (S2 NDVI) ── */}
                 {scan.spectral?.valid && (
                   <div className="border-t border-[#1a2a1e] pt-2 mb-3">
                     <p className="text-[#2a3a2e] text-[7px] tracking-[0.25em] mb-1">S2 SPECTRAL</p>
@@ -1203,7 +1817,6 @@ function ViewerInner() {
                   </div>
                 )}
 
-                {/* ── Muon baseline ── */}
                 {scan.muon_baseline?.valid && (
                   <div className="border-t border-[#1a2a1e] pt-2 mb-3">
                     <p className="text-[#2a3a2e] text-[7px] tracking-[0.25em] mb-1">MUON BASELINE</p>
@@ -1216,15 +1829,12 @@ function ViewerInner() {
                   </div>
                 )}
 
-                {/* ── Candidates ── */}
                 {scan.candidates.length === 0 && (
                   <p className="text-[#2a3a2e] text-[8px]">No anomalies detected</p>
                 )}
                 {scan.candidates.slice(0, 8).map((c) => {
                   const color = c.score > 0.7 ? '#f87171' : c.score > 0.4 ? '#fbbf24' : '#5b7c6f'
-                
-
-  return (
+                  return (
                     <div key={c.id} className="border-b border-[#1a2a1e] py-2 last:border-0">
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-[9px] font-mono font-medium" style={{ color }}>{c.id}</span>
@@ -1301,21 +1911,21 @@ function ViewerInner() {
                 : 'border-[#1a2a1e] text-[#5b7c6f] hover:border-[#5b7c6f]'
             }`}
           >
-            {webglOverlay ? 'WEBGL HEATMAP ACTIVE' : 'WEBGL HEATMAP'}
+            {webglOverlay ? 'ANOMALY HEATMAP ACTIVE' : 'ANOMALY HEATMAP'}
           </button>
 
           <button
-            onClick={() => setTerrainMode(v => !v)}
+            onClick={() => { setTerrainMode(v => !v); terrainStartRef.current = null }}
             className={`w-full py-2 border text-[8px] tracking-[0.15em] transition-colors ${
               terrainMode
                 ? 'border-[#fb923c] text-[#fb923c]'
                 : 'border-[#1a2a1e] text-[#5b7c6f] hover:border-[#5b7c6f]'
             }`}
           >
-            {terrainMode ? 'TERRAIN PROFILE ACTIVE' : 'TERRAIN PROFILE'}
+            {terrainMode ? 'TERRAIN PROFILE ACTIVE — CLICK 2 POINTS' : 'TERRAIN PROFILE'}
           </button>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-1">
+          <div className="grid grid-cols-2 gap-1">
             <button onClick={saveAOI} disabled={!aoiGeometry || aoiSaveStatus === 'saving'} className="py-2 border border-[#1a2a1e] hover:border-[#5b7c6f] text-[#5b7c6f] text-[8px] tracking-[0.15em] disabled:opacity-40">
               {aoiSaveStatus === 'saving' ? 'SAVING' : aoiSaveStatus === 'saved' ? 'SAVED' : aoiSaveStatus === 'error' ? 'FAILED' : 'SAVE'}
             </button>
@@ -1361,8 +1971,6 @@ function ViewerInner() {
             </div>
           )}
         </div>
-
-
 
         {/* Temporal Comparison */}
         <div className="border-t border-[#1a2a1e] p-3 space-y-3">
@@ -1487,9 +2095,7 @@ function ViewerInner() {
 
               {scan?.candidates?.slice(0, 5).map((c, i) => {
                 const x = ((i + 1) / 6) * 240
-              
-
-  return (
+                return (
                   <circle
                     key={c.id}
                     cx={x}
@@ -1539,7 +2145,20 @@ function ViewerInner() {
             {intelLoading ? 'SCANNING...' : '↻ REFRESH INTEL'}
           </button>
           <button
-            onClick={() => { const aoiParam = aoiGeometry ? encodeURIComponent(JSON.stringify(aoiGeometry)) : ''; const loc = encodeURIComponent(coords.lat.toFixed(5) + ', ' + coords.lng.toFixed(5) + ' — LithicEarth scan'); router.push(`/portal/reports/new?lat=${coords.lat}&lng=${coords.lng}&location=${loc}${aoiParam ? '&aoi=' + aoiParam : ''}`); }}
+            onClick={() => {
+              const aoiParam = aoiGeometry ? encodeURIComponent(JSON.stringify(aoiGeometry)) : ''
+              const loc = encodeURIComponent(coords.lat.toFixed(5) + ', ' + coords.lng.toFixed(5) + ' — LithicEarth scan')
+              // Only license-clear overlays travel into the report pipeline.
+              const overlays = histActive
+                .filter(a => COMMERCIAL_OK.has(a.map.license))
+                .map(a => a.map.id)
+                .join(',')
+              router.push(
+                `/portal/reports/new?lat=${coords.lat}&lng=${coords.lng}&location=${loc}` +
+                (aoiParam ? `&aoi=${aoiParam}` : '') +
+                (overlays ? `&overlays=${overlays}` : '')
+              )
+            }}
             className="w-full py-2 border border-[#D4AF37]/20 hover:border-[#D4AF37]/50 text-[#D4AF37] text-[9px] tracking-[0.2em] transition-colors"
           >
             → GENERATE REPORT
@@ -1552,8 +2171,6 @@ function ViewerInner() {
 
 // ── Export with Suspense (required for useSearchParams) ────────────────
 export default function ViewerPage() {
-
-
   return (
     <Suspense fallback={
       <div className="min-h-screen bg-[#0a0e0b] flex items-center justify-center">
