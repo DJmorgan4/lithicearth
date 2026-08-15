@@ -1,18 +1,30 @@
+from dotenv import load_dotenv
+
+# Load environment variables before importing signals.py
+load_dotenv(".env")
+load_dotenv(".env.local", override=True)
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from pystac_client import Client
+import httpx
+
+from signals import router as signals_router
+
+
 def normalize_coords(lat: float, lng: float):
     lat = max(-90.0, min(90.0, float(lat)))
     lng = ((float(lng) + 180.0) % 360.0) - 180.0
     return lat, lng
 
 
-from fastapi import FastAPI
-from signals import router as signals_router
-from fastapi.middleware.cors import CORSMiddleware
-from pystac_client import Client
-import httpx
-
-app = FastAPI(title="Lithic Engine", version="2.0.0")
+app = FastAPI(
+    title="Lithic Engine",
+    version="2.0.0",
+)
 
 app.include_router(signals_router)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -20,13 +32,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 @app.get("/health")
 def health():
-    return {"status": "alive", "engine": "Lithic v2 — real pixel measurements"}
+    return {
+        "status": "alive",
+        "engine": "Lithic v2 — real pixel measurements",
+    }
+
 
 def sample_cog_point(url: str, lng: float, lat: float):
     try:
         from rio_tiler.io import Reader
+
         with Reader(url) as r:
             pt = r.point(lng, lat)
             return float(pt.data[0])

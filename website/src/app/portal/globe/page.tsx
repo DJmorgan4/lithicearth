@@ -2,7 +2,7 @@
 import Link from 'next/link'
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Canvas, useFrame, useThree, useLoader } from '@react-three/fiber';
+import { Canvas, useFrame, useLoader } from '@react-three/fiber';
 import { OrbitControls, Stars } from '@react-three/drei';
 import { createClient } from '@/lib/supabase/client';
 import * as THREE from 'three';
@@ -58,32 +58,33 @@ const DEFAULT_LAYERS: LayerConfig[] = [
   { id: 'historic',  label: 'Historic Imagery',   group: 'Archaeological',active: false, opacity: 0.7,  source: 'USGS CORONA' },
 ];
 const GROUPS = ['Base', 'Environmental', 'Geophysical', 'Archaeological'];
+const LAYER_STORAGE_KEY = 'lithic:globe-layers';
 
-function vec3ToLatLng(v: THREE.Vector3): { lat: number; lng: number } {
-  const r = v.length();
-  const lat = 90 - (Math.acos(Math.max(-1, Math.min(1, v.y / r))) * 180) / Math.PI;
-  const lng = ((Math.atan2(v.z, v.x) * 180) / Math.PI + 360) % 360 - 180;
-  return { lat: Number((lat - 90).toFixed(5) === '-90' ? -90 : lat - 90 > 90 ? 90 : lat - 90), lng: Number(lng.toFixed(5)) };
+// ── Canonical globe coordinate math ────────────────────────────────────
+// GLOBE_ROTATION_Y aligns your earth.jpg equirectangular texture with
+// lat/lng space. Because ALL geo-anchored content (markers, beams, scan
+// results) lives inside one group sharing this rotation, and clicks are
+// converted via worldToLocal, markers and clicks are always internally
+// consistent. If markers appear offset from the texture, tune ONLY this
+// constant until a known landmark lines up.
+const GLOBE_ROTATION_Y = Math.PI * 1.08;
+
+function latLngToVec3(lat: number, lng: number, r: number): THREE.Vector3 {
+  const phi = (90 - lat) * (Math.PI / 180);
+  const theta = (lng + 180) * (Math.PI / 180);
+  return new THREE.Vector3(
+    -r * Math.sin(phi) * Math.cos(theta),
+    r * Math.cos(phi),
+    r * Math.sin(phi) * Math.sin(theta)
+  );
 }
 
-// Brighten a loaded image via canvas and return a new THREE.Texture
-function brightenTexture(img: HTMLImageElement, factor: number): THREE.Texture {
-  const canvas = document.createElement('canvas');
-  canvas.width  = img.naturalWidth  || img.width;
-  canvas.height = img.naturalHeight || img.height;
-  const ctx = canvas.getContext('2d')!;
-  ctx.drawImage(img, 0, 0);
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const data = imageData.data;
-  for (let i = 0; i < data.length; i += 4) {
-    data[i]   = Math.min(255, data[i]   * factor);
-    data[i+1] = Math.min(255, data[i+1] * factor);
-    data[i+2] = Math.min(255, data[i+2] * factor);
-  }
-  ctx.putImageData(imageData, 0, 0);
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
+function vec3ToLatLng(v: THREE.Vector3): { lat: number; lng: number } {
+  const r = v.length() || 1;
+  const lat = 90 - (Math.acos(Math.max(-1, Math.min(1, v.y / r))) * 180) / Math.PI;
+  let lng = (Math.atan2(v.z, -v.x) * 180) / Math.PI - 180;
+  lng = ((lng + 540) % 360) - 180;
+  return { lat: Number(lat.toFixed(5)), lng: Number(lng.toFixed(5)) };
 }
 
 function GlobeScene({ posts, stratumSites, layers, astraCandidates, selectedAstraCandidate, scanResult, onGlobeClick, onMouseMove, onStratumSiteClick }: {
@@ -98,11 +99,9 @@ function GlobeScene({ posts, stratumSites, layers, astraCandidates, selectedAstr
   onStratumSiteClick: (site: StratumSite) => void;
 }) {
   const globeRef = useRef<THREE.Mesh>(null);
-  const { camera, gl } = useThree();
-  const raycaster = useRef(new THREE.Raycaster());
-  const mouse = useRef(new THREE.Vector2());
-  const texture = useLoader(THREE.TextureLoader, '/earth.jpg');
   const overlayRef = useRef<THREE.Group>(null);
+  const flightArrivedRef = useRef<string | null>(null);
+  const texture = useLoader(THREE.TextureLoader, '/earth.jpg');
 
   const active = useCallback((id: string) => layers.some(l => l.id === id && l.active), [layers]);
 
@@ -110,68 +109,167 @@ function GlobeScene({ posts, stratumSites, layers, astraCandidates, selectedAstr
     if (overlayRef.current) overlayRef.current.rotation.y += delta * 0.025;
 
     if (selectedAstraCandidate && globeRef.current) {
-      const phi = (90 - selectedAstraCandidate.lat) * (Math.PI / 180);
-      const theta = selectedAstraCandidate.lng * (Math.PI / 180);
-
-      const target = new THREE.Vector3(
-        3.15 * Math.sin(phi) * Math.cos(theta),
-        3.15 * Math.cos(phi),
-        3.15 * Math.sin(phi) * Math.sin(theta)
-      );
-
-      camera.position.lerp(target, 0.018);
-      camera.lookAt(0, 0, 0);
+      // Fly-to target computed in the SAME rotated frame as the markers,
+      // then transformed to world space (camera lives in world space).
+      if (flightArrivedRef.current !== selectedAstraCandidate.id) {
+        const target = latLngToVec3(selectedAstraCandidate.lat, selectedAstraCandidate.lng, 3.15)
+          .applyEuler(new THREE.Euler(0, GLOBE_ROTATION_Y, 0));
+        camera.position.lerp(target, 0.06);
+        camera.lookAt(0, 0, 0);
+        if (camera.position.distanceTo(target) < 0.05) {
+          flightArrivedRef.current = selectedAstraCandidate.id; // hand control back to OrbitControls
+        }
+      }
 
       const pulse = 1 + Math.sin(clock.elapsedTime * 2.5) * 0.03;
       globeRef.current.scale.setScalar(pulse);
     } else if (globeRef.current) {
+      flightArrivedRef.current = null;
       globeRef.current.scale.lerp(new THREE.Vector3(1, 1, 1), 0.05);
     }
   });
 
-  // No auto-rotation — keeps markers aligned with texture
-
-  const getLatLng = useCallback((e: MouseEvent | React.MouseEvent) => {
-    if (!globeRef.current) return null;
-    const rect = gl.domElement.getBoundingClientRect();
-    mouse.current.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-    mouse.current.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-    raycaster.current.setFromCamera(mouse.current, camera);
-    const hits = raycaster.current.intersectObject(globeRef.current);
-    return hits.length > 0 ? vec3ToLatLng(hits[0].point) : null;
-  }, [camera, gl]);
-
+  // r3f already raycasts for us — e.point is the world-space hit.
+  // worldToLocal inverts the group rotation (and pulse scale, which is
+  // direction-preserving) so the conversion is exact.
   const handleClick = useCallback((e: any) => {
-    const coords = getLatLng(e);
-    if (coords) onGlobeClick(coords.lat, coords.lng);
-  }, [getLatLng, onGlobeClick]);
+    if (!globeRef.current) return;
+    e.stopPropagation();
+    const local = globeRef.current.worldToLocal(e.point.clone());
+    const coords = vec3ToLatLng(local);
+    onGlobeClick(coords.lat, coords.lng);
+  }, [onGlobeClick]);
 
   const handleMove = useCallback((e: any) => {
-    const coords = getLatLng(e);
-    if (coords) onMouseMove(coords.lat, coords.lng);
-  }, [getLatLng, onMouseMove]);
-
-  const markerPositions = posts.slice(0, 100).map(post => {
-    const phi = (90 - post.lat) * (Math.PI / 180);
-    const theta = post.lng * (Math.PI / 180);
-    const r = 2.03;
-    return new THREE.Vector3(r * Math.sin(phi) * Math.cos(theta), r * Math.cos(phi), r * Math.sin(phi) * Math.sin(theta));
-  });
+    if (!globeRef.current) return;
+    const local = globeRef.current.worldToLocal(e.point.clone());
+    const coords = vec3ToLatLng(local);
+    onMouseMove(coords.lat, coords.lng);
+  }, [onMouseMove]);
 
   return (
     <>
       <ambientLight intensity={1.0} />
       <directionalLight position={[5, 3, 5]} intensity={0.8} color="#fff8ee" />
 
-      <mesh ref={globeRef} onClick={handleClick} onPointerMove={handleMove} rotation={[0, Math.PI * 1.08, 0]}>
-        <sphereGeometry args={[2, 128, 64]} />
-        {texture
-          ? <meshBasicMaterial map={texture} />
-          : <meshBasicMaterial color={0x1a3d5c} />
-        }
-      </mesh>
+      {/* ── Geo-anchored group: globe mesh + every lat/lng marker ──────
+          Sharing one rotation guarantees texture ↔ marker ↔ click alignment. */}
+      <group rotation={[0, GLOBE_ROTATION_Y, 0]}>
+        <mesh ref={globeRef} onClick={handleClick} onPointerMove={handleMove}>
+          <sphereGeometry args={[2, 128, 64]} />
+          {texture
+            ? <meshBasicMaterial map={texture} />
+            : <meshBasicMaterial color={0x1a3d5c} />
+          }
+        </mesh>
 
-      {/* Atmosphere glow */}
+        {/* Post markers */}
+        {posts.slice(0, 100).map(post => (
+          <mesh key={post.id} position={latLngToVec3(post.lat, post.lng, 2.03)}>
+            <sphereGeometry args={[0.016, 8, 8]} />
+            <meshBasicMaterial color={0x5b7c6f} transparent opacity={0.8} />
+          </mesh>
+        ))}
+
+        {/* ASTRA discovery markers */}
+        {astraCandidates.map(candidate => {
+          const pos = latLngToVec3(candidate.lat, candidate.lng, 2.085);
+          const hot = candidate.score >= 88;
+          return (
+            <group key={candidate.id} position={pos}>
+              <mesh>
+                <sphereGeometry args={[hot ? 0.04 : 0.032, 16, 16]} />
+                <meshBasicMaterial color={hot ? '#D4AF37' : '#12A8AC'} transparent opacity={0.95} />
+              </mesh>
+              <mesh>
+                <sphereGeometry args={[hot ? 0.075 : 0.06, 16, 16]} />
+                <meshBasicMaterial color={hot ? '#D4AF37' : '#12A8AC'} transparent opacity={0.18} blending={THREE.AdditiveBlending} />
+              </mesh>
+            </group>
+          );
+        })}
+
+        {/* Selected ASTRA target beam — oriented along the surface normal,
+            so it points outward correctly at every latitude */}
+        {selectedAstraCandidate && (() => {
+          const surface = latLngToVec3(selectedAstraCandidate.lat, selectedAstraCandidate.lng, 2.02);
+          const dir = surface.clone().normalize();
+          const quat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+          return (
+            <group position={surface} quaternion={quat}>
+              <mesh position={[0, 0.35, 0]}>
+                <cylinderGeometry args={[0.001, 0.014, 0.7, 16, 1, true]} />
+                <meshBasicMaterial
+                  color="#D4AF37"
+                  transparent
+                  opacity={0.18}
+                  blending={THREE.AdditiveBlending}
+                />
+              </mesh>
+              <mesh position={[0, 0.03, 0]}>
+                <sphereGeometry args={[0.055, 24, 24]} />
+                <meshBasicMaterial
+                  color="#D4AF37"
+                  transparent
+                  opacity={0.9}
+                />
+              </mesh>
+            </group>
+          );
+        })()}
+
+        {/* Stratum site markers */}
+        {stratumSites.map(site => {
+          const pos = latLngToVec3(site.latitude, site.longitude, 2.04);
+          const score = site.ceto_score ?? 50;
+          const color = score < 40 ? '#5b9c6f' : score < 70 ? '#D4AF37' : '#c0503a';
+          return (
+            <mesh key={site.id} position={pos} onClick={(e) => { e.stopPropagation(); onStratumSiteClick(site); }}>
+              <sphereGeometry args={[0.022, 10, 10]} />
+              <meshBasicMaterial color={color} transparent opacity={0.9} />
+            </mesh>
+          );
+        })}
+
+        {/* MSIGI scan candidates — hex cluster markers */}
+        {scanResult?.candidates?.map((c: any) => {
+          const pos = latLngToVec3(c.lat, c.lng, 2.055);
+          const score = c.score || 0;
+          const color = score >= 0.7 ? '#D4AF37' : score >= 0.5 ? '#12A8AC' : '#5b7c6f';
+          const size = 0.018 + score * 0.022;
+          return (
+            <group key={`msigi-${c.id}`} position={pos}>
+              {/* Core dot */}
+              <mesh>
+                <sphereGeometry args={[size, 16, 16]} />
+                <meshBasicMaterial color={color} transparent opacity={0.95} />
+              </mesh>
+              {/* Outer ring */}
+              <mesh>
+                <sphereGeometry args={[size * 2.2, 16, 16]} />
+                <meshBasicMaterial color={color} transparent opacity={0.12} blending={THREE.AdditiveBlending} />
+              </mesh>
+              {/* Score label ring */}
+              <mesh rotation={[Math.PI / 2, 0, 0]}>
+                <torusGeometry args={[size * 3.5, 0.002, 8, 32]} />
+                <meshBasicMaterial color={color} transparent opacity={0.3} blending={THREE.AdditiveBlending} />
+              </mesh>
+            </group>
+          );
+        })}
+
+        {/* Scan origin pulse ring */}
+        {scanResult?.location && (
+          <group position={latLngToVec3(scanResult.location.lat, scanResult.location.lng, 2.015)}>
+            <mesh>
+              <sphereGeometry args={[0.004, 12, 12]} />
+              <meshBasicMaterial color="#D4AF37" />
+            </mesh>
+          </group>
+        )}
+      </group>
+
+      {/* Atmosphere glow — not geo-anchored, stays outside the rotated group */}
       <mesh>
         <sphereGeometry args={[2.16, 64, 32]} />
         <shaderMaterial
@@ -181,88 +279,7 @@ function GlobeScene({ posts, stratumSites, layers, astraCandidates, selectedAstr
         />
       </mesh>
 
-      {/* Post markers */}
-      {markerPositions.map((pos, i) => (
-        <mesh key={posts[i].id} position={pos}>
-          <sphereGeometry args={[0.016, 8, 8]} />
-          <meshBasicMaterial color={0x5b7c6f} transparent opacity={0.8} />
-        </mesh>
-      ))}
-
-      {/* ASTRA discovery markers */}
-      {astraCandidates.map(candidate => {
-        const phi = (90 - candidate.lat) * (Math.PI / 180);
-        const theta = candidate.lng * (Math.PI / 180);
-        const r = 2.085;
-        const pos = new THREE.Vector3(r * Math.sin(phi) * Math.cos(theta), r * Math.cos(phi), r * Math.sin(phi) * Math.sin(theta));
-        const hot = candidate.score >= 88;
-        return (
-          <group key={candidate.id} position={pos}>
-            <mesh>
-              <sphereGeometry args={[hot ? 0.04 : 0.032, 16, 16]} />
-              <meshBasicMaterial color={hot ? '#D4AF37' : '#12A8AC'} transparent opacity={0.95} />
-            </mesh>
-            <mesh>
-              <sphereGeometry args={[hot ? 0.075 : 0.06, 16, 16]} />
-              <meshBasicMaterial color={hot ? '#D4AF37' : '#12A8AC'} transparent opacity={0.18} blending={THREE.AdditiveBlending} />
-            </mesh>
-          </group>
-        );
-      })}
-
-
-      {/* Selected ASTRA target beam */}
-      {selectedAstraCandidate && (() => {
-        const phi = (90 - selectedAstraCandidate.lat) * (Math.PI / 180);
-        const theta = selectedAstraCandidate.lng * (Math.PI / 180);
-
-        const r = 2.18;
-
-        const x = r * Math.sin(phi) * Math.cos(theta);
-        const y = r * Math.cos(phi);
-        const z = r * Math.sin(phi) * Math.sin(theta);
-
-        return (
-          <group position={[x, y, z]}>
-            <mesh rotation={[Math.PI / 2, 0, 0]}>
-              <cylinderGeometry args={[0.012, 0.001, 0.7, 16, 1, true]} />
-              <meshBasicMaterial
-                color="#D4AF37"
-                transparent
-                opacity={0.18}
-                blending={THREE.AdditiveBlending}
-              />
-            </mesh>
-
-            <mesh>
-              <sphereGeometry args={[0.055, 24, 24]} />
-              <meshBasicMaterial
-                color="#D4AF37"
-                transparent
-                opacity={0.9}
-              />
-            </mesh>
-          </group>
-        );
-      })()}
-
-      {/* Stratum site markers */}
-      {stratumSites.map(site => {
-        const phi = (90 - site.latitude) * (Math.PI / 180);
-        const theta = site.longitude * (Math.PI / 180);
-        const r = 2.04;
-        const pos = new THREE.Vector3(r * Math.sin(phi) * Math.cos(theta), r * Math.cos(phi), r * Math.sin(phi) * Math.sin(theta));
-        const score = site.ceto_score ?? 50;
-        const color = score < 40 ? '#5b9c6f' : score < 70 ? '#D4AF37' : '#c0503a';
-        return (
-          <mesh key={site.id} position={pos} onClick={(e) => { e.stopPropagation(); onStratumSiteClick(site); }}>
-            <sphereGeometry args={[0.022, 10, 10]} />
-            <meshBasicMaterial color={color} transparent opacity={0.9} />
-          </mesh>
-        );
-      })}
-
-      {/* Layer-reactive intelligence overlays */}
+      {/* Layer-reactive intelligence overlays — decorative, slowly rotating */}
       <group ref={overlayRef}>
         {active('terrain') && (
           <mesh>
@@ -329,57 +346,6 @@ function GlobeScene({ posts, stratumSites, layers, astraCandidates, selectedAstr
         )}
       </group>
 
-      {/* MSIGI scan candidates — hex cluster markers */}
-      {scanResult?.candidates?.map((c: any) => {
-        const phi = (90 - c.lat) * (Math.PI / 180);
-        const theta = c.lng * (Math.PI / 180);
-        const r = 2.055;
-        const x = r * Math.sin(phi) * Math.cos(theta);
-        const y = r * Math.cos(phi);
-        const z = r * Math.sin(phi) * Math.sin(theta);
-        const score = c.score || 0;
-        const color = score >= 0.7 ? '#D4AF37' : score >= 0.5 ? '#12A8AC' : '#5b7c6f';
-        const size = 0.018 + score * 0.022;
-        return (
-          <group key={`msigi-${c.id}`} position={[x, y, z]}>
-            {/* Core dot */}
-            <mesh>
-              <sphereGeometry args={[size, 16, 16]} />
-              <meshBasicMaterial color={color} transparent opacity={0.95} />
-            </mesh>
-            {/* Outer ring */}
-            <mesh>
-              <sphereGeometry args={[size * 2.2, 16, 16]} />
-              <meshBasicMaterial color={color} transparent opacity={0.12} blending={THREE.AdditiveBlending} />
-            </mesh>
-            {/* Score label ring */}
-            <mesh rotation={[Math.PI / 2, 0, 0]}>
-              <torusGeometry args={[size * 3.5, 0.002, 8, 32]} />
-              <meshBasicMaterial color={color} transparent opacity={0.3} blending={THREE.AdditiveBlending} />
-            </mesh>
-          </group>
-        );
-      })}
-
-      {/* Scan origin pulse ring */}
-      {scanResult?.location && (() => {
-        const phi = (90 - scanResult.location.lat) * (Math.PI / 180);
-        const theta = scanResult.location.lng * (Math.PI / 180);
-        const r = 2.015;
-        const x = r * Math.sin(phi) * Math.cos(theta);
-        const y = r * Math.cos(phi);
-        const z = r * Math.sin(phi) * Math.sin(theta);
-        // Radius ring at ~500m scale on globe surface
-        return (
-          <group position={[x, y, z]}>
-            <mesh>
-              <sphereGeometry args={[0.004, 12, 12]} />
-              <meshBasicMaterial color="#D4AF37" />
-            </mesh>
-          </group>
-        );
-      })()}
-
       <Stars radius={120} depth={60} count={6000} factor={3} saturation={0} fade speed={0.2} />
       <OrbitControls enableZoom enablePan={false} minDistance={2.05} maxDistance={20} zoomSpeed={0.8} autoRotateSpeed={0} minPolarAngle={Math.PI * 0.1} maxPolarAngle={Math.PI * 0.9} />
     </>
@@ -417,6 +383,7 @@ export default function PortalGlobe() {
   const [nexusResult, setNexusResult] = useState<any>(null);
   const [nexusLoading, setNexusLoading] = useState(false);
   const [scanLoading, setScanLoading] = useState(false);
+  const [layersHydrated, setLayersHydrated] = useState(false);
 
   const supabase = createClient();
 
@@ -424,6 +391,47 @@ export default function PortalGlobe() {
     // posts table not yet created — stratum_sites is the live data source
     supabase.from('stratum_sites').select(`id, name, latitude, longitude, source, site_type, ceto_score, ceto_tier, esa_phase, status, tags, stratum_sensor_readings(sensor_type, value, unit, created_at), stratum_observations(observation_type, notes, created_at), stratum_documents(doc_type, title, url)`).eq('status', 'active').then(({ data }) => { if (data) setStratumSites(data as StratumSite[]); });
     supabase.from('portal_projects').select('id, name, client').order('created_at', { ascending: false }).then(({ data }) => { if (data) setProjects(data); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Hydrate layer state: URL ?layers= wins, then localStorage ──────
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const requested = (params.get('layers') || '').split(',').map(s => s.trim()).filter(Boolean);
+      const stored = localStorage.getItem(LAYER_STORAGE_KEY);
+      const saved: Record<string, { active: boolean; opacity: number }> = stored ? JSON.parse(stored) : {};
+      setLayers(prev => prev.map(l => ({
+        ...l,
+        active: requested.length ? (requested.includes(l.id) || l.group === 'Base' && l.active) : (saved[l.id]?.active ?? l.active),
+        opacity: saved[l.id]?.opacity ?? l.opacity,
+      })));
+    } catch { /* corrupt storage — fall back to defaults */ }
+    setLayersHydrated(true);
+  }, []);
+
+  // ── Persist layer state ────────────────────────────────────────────
+  useEffect(() => {
+    if (!layersHydrated) return;
+    try {
+      const snapshot = Object.fromEntries(layers.map(l => [l.id, { active: l.active, opacity: l.opacity }]));
+      localStorage.setItem(LAYER_STORAGE_KEY, JSON.stringify(snapshot));
+    } catch { /* storage unavailable */ }
+  }, [layers, layersHydrated]);
+
+  // ── Escape closes all floating panels ──────────────────────────────
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      setSelectedAstraCandidate(null);
+      setSelectedStratumSite(null);
+      setReadout(null);
+      setIntel(null);
+      setShowProjectPicker(false);
+      setExpeditionMode(false);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
   }, []);
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 3000); };
@@ -918,7 +926,7 @@ export default function PortalGlobe() {
                 </div>
               )}
             </div>
-            <div className="border-t border-[#1a2a1e] grid grid-cols-1 md:grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-px bg-[#1a2a1e]">
+            <div className="border-t border-[#1a2a1e] grid grid-cols-1 sm:grid-cols-3 gap-px bg-[#1a2a1e]">
               <button onClick={flagAnomaly} disabled={flagging || flagDone} className="bg-[#0d1410] px-3 py-2.5 flex items-center justify-center gap-1.5 hover:bg-[#111a14] transition-colors disabled:opacity-50">
                 {flagDone ? <Check size={10} className="text-[#5b7c6f]" /> : flagging ? <AlertCircle size={10} className="text-[#5b7c6f] animate-pulse" /> : <Flag size={10} className="text-[#5b7c6f]" />}
                 <span className="text-[#5b7c6f] text-[9px] tracking-[0.12em] font-light">{flagDone ? 'FLAGGED' : flagging ? 'SAVING...' : 'FLAG ANOMALY'}</span>

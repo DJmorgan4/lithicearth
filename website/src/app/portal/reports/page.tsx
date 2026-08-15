@@ -1,8 +1,6 @@
- 
- 
 import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
-import { Plus, FileText, Calendar, ArrowRight } from 'lucide-react'
+import { Plus, FileText, Calendar, ArrowRight, Crosshair } from 'lucide-react'
 
 export default async function ReportsPage() {
   const supabase = await createClient()
@@ -13,6 +11,13 @@ export default async function ReportsPage() {
     .select('id, name, client, created_at')
     .eq('user_id', user?.id)
     .order('created_at', { ascending: false })
+
+  const { data: recentAOIs } = await supabase
+    .from('portal_observations')
+    .select('id, lat, lng, created_at')
+    .eq('type', 'aoi')
+    .order('created_at', { ascending: false })
+    .limit(3)
 
   return (
     <div className="p-4 md:p-8 min-h-screen">
@@ -36,7 +41,7 @@ export default async function ReportsPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-px bg-[#1a2a1e] mb-10">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-px bg-[#1a2a1e] mb-10">
         {[
           { label: 'PHASE I ESA', sub: 'ASTM E1527-21', status: 'Available via Ceto' },
           { label: 'MSIGI ANALYSIS', sub: 'Multi-source interferometric', status: 'Beta' },
@@ -49,6 +54,32 @@ export default async function ReportsPage() {
           </div>
         ))}
       </div>
+
+      {recentAOIs && recentAOIs.length > 0 && (
+        <div className="mb-10">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-4 h-px bg-[#D4AF37]" />
+            <span className="text-[#7a8a7d] text-xs tracking-[0.2em] font-light">GENERATE FROM RECENT AOI</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-px bg-[#1a2a1e]">
+            {recentAOIs.map(aoi => (
+              <Link
+                key={aoi.id}
+                href={`/portal/reports/new?lat=${aoi.lat}&lng=${aoi.lng}`}
+                className="bg-[#0d1410] px-5 py-4 hover:bg-[#111a14] transition-colors group"
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <Crosshair size={10} className="text-[#D4AF37]" />
+                  <span className="text-[#c8c4ba] text-[11px] font-mono font-light">{aoi.lat}, {aoi.lng}</span>
+                </div>
+                <p className="text-[#3a4a3e] text-[9px] font-light">
+                  {new Date(aoi.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} · <span className="group-hover:text-[#D4AF37] transition-colors">report →</span>
+                </p>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="mb-8">
         <div className="flex items-center gap-3 mb-4">
@@ -91,6 +122,15 @@ export default async function ReportsPage() {
             </Link>
           </div>
         )}
+      </div>
+
+      <div className="border-t border-[#1a2a1e] pt-6">
+        <Link
+          href="/portal/viewer"
+          className="inline-flex items-center gap-2 text-[#5b7c6f] text-xs font-light hover:text-[#D4AF37] transition-colors"
+        >
+          Open the Viewer to select a new AOI for reporting →
+        </Link>
       </div>
     </div>
   )

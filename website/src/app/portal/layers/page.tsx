@@ -1,9 +1,21 @@
- 
- 
 'use client'
 
-import { useState } from 'react'
-import { ChevronRight, Eye, EyeOff, Download, Zap, Radio, Waves, Mountain, Thermometer, Atom, Droplets, Satellite } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { ChevronRight, Eye, EyeOff, Download, Zap, Radio, Mountain, Thermometer, Atom, Droplets, Satellite } from 'lucide-react'
+
+const STACK_STORAGE_KEY = 'lithic:stack-enabled'
+
+// Maps Intelligence Stack ids → globe layer ids for the OPEN GLOBE handoff
+const GLOBE_ID_MAP: Record<string, string> = {
+  multispectral: 'ndvi',
+  hyperspectral: 'ndvi',
+  dem: 'terrain',
+  thermal_ir: 'thermal',
+  magnetics: 'magnetic',
+  bathymetry: 'hydro',
+  insar: 'sar',
+  polsar: 'sar',
+}
 
 const LAYER_CATEGORIES = [
   {
@@ -268,6 +280,27 @@ export default function DataLayersPage() {
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
   const [activeLayer, setActiveLayer] = useState<string | null>(null)
   const [enabled, setEnabled] = useState<Set<string>>(new Set(['sar', 'insar', 'lidar', 'multispectral', 'hyperspectral', 'thermal_ir', 'dem']))
+  const [hydrated, setHydrated] = useState(false)
+
+  // ── Restore enabled stack from localStorage ────────────────────────
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(STACK_STORAGE_KEY)
+      if (stored) {
+        const ids: string[] = JSON.parse(stored)
+        if (Array.isArray(ids)) setEnabled(new Set(ids))
+      }
+    } catch { /* corrupt storage — keep defaults */ }
+    setHydrated(true)
+  }, [])
+
+  // ── Persist enabled stack ──────────────────────────────────────────
+  useEffect(() => {
+    if (!hydrated) return
+    try {
+      localStorage.setItem(STACK_STORAGE_KEY, JSON.stringify([...enabled]))
+    } catch { /* storage unavailable */ }
+  }, [enabled, hydrated])
 
   const toggleLayer = (id: string) => {
     setEnabled(prev => {
@@ -280,6 +313,13 @@ export default function DataLayersPage() {
 
   const selected = LAYER_CATEGORIES.flatMap(c => c.layers).find(l => l.id === activeLayer)
   const selectedCat = LAYER_CATEGORIES.find(c => c.layers.some(l => l.id === activeLayer))
+
+  // Carry the active stack into the globe — mapped to globe layer ids,
+  // deduped, unknown ids are ignored by the globe page
+  const globeLayers = [...new Set([...enabled].map(id => GLOBE_ID_MAP[id] ?? id))]
+  const globeHref = globeLayers.length
+    ? `/portal/globe?layers=${encodeURIComponent(globeLayers.join(','))}`
+    : '/portal/globe'
 
   return (
     <div className="min-h-screen bg-[#0a0e0b] flex flex-col">
@@ -295,7 +335,7 @@ export default function DataLayersPage() {
               {LAYER_CATEGORIES.reduce((a, c) => a + c.layers.length, 0)} modalities · {enabled.size} active · STAC-indexed
             </p>
           </div>
-          <div className="flex items-center gap-4 md:p-6">
+          <div className="hidden md:flex items-center gap-4 p-6">
             {(['live','processing','field','coming','research'] as const).map(s => (
               <div key={s} className="flex items-center gap-2">
                 <div className="w-1.5 h-1.5 rounded-full" style={{ background: STATUS_STYLES[s].color }} />
@@ -337,7 +377,11 @@ export default function DataLayersPage() {
                       className={`w-full flex items-center justify-between px-5 py-3.5 border-b border-[#111a14] transition-all text-left ${isActive ? 'bg-[#111a14]' : 'hover:bg-[#0d1410]'}`}
                     >
                       <div className="flex items-center gap-3 min-w-0">
-                        <button
+                        {/* span, not button — buttons cannot nest inside buttons (invalid HTML / hydration warnings) */}
+                        <span
+                          role="switch"
+                          aria-checked={isOn && layer.available}
+                          aria-label={`Toggle ${layer.name}`}
                           onClick={e => { e.stopPropagation(); if (layer.available) toggleLayer(layer.id) }}
                           className={`w-2 h-2 rounded-full flex-shrink-0 transition-all ${layer.available ? 'cursor-pointer' : 'cursor-not-allowed opacity-30'}`}
                           style={{ background: isOn && layer.available ? cat.accent : '#1a2a1e', boxShadow: isOn && layer.available ? `0 0 6px ${cat.accent}60` : 'none' }}
@@ -386,7 +430,7 @@ export default function DataLayersPage() {
 
               <p className="text-[#a8a49c] text-sm font-light leading-relaxed mb-8 border-l-2 border-[#1a2a1e] pl-5">{selected.description}</p>
 
-              <div className="grid grid-cols-1 md:grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-px bg-[#1a2a1e] mb-8">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-px bg-[#1a2a1e] mb-8">
                 {[
                   { label: 'RESOLUTION', value: selected.resolution },
                   { label: 'WAVELENGTH', value: selected.wavelength },
@@ -420,7 +464,7 @@ export default function DataLayersPage() {
                   <span className="text-xs font-light text-[#7a8a7d]">
                     {selected.status === 'live' && 'Available — toggle on to activate in globe view'}
                     {selected.status === 'processing' && 'Data acquired — processing pipeline running'}
-                    {selected.status === 'coming' && 'Scheduled for integration — Q3 2025'}
+                    {selected.status === 'coming' && 'Scheduled for integration — Q4 2026'}
                     {selected.status === 'field' && 'Requires field instrument deployment'}
                     {selected.status === 'research' && 'Experimental — MSIGI research integration planned'}
                   </span>
@@ -442,7 +486,7 @@ export default function DataLayersPage() {
           )}
         </div>
 
-        <div className="w-full md:w-56 border-l border-[#1a2a1e] p-4 overflow-y-auto">
+        <div className="hidden lg:block w-56 border-l border-[#1a2a1e] p-4 overflow-y-auto">
           <div className="flex items-center gap-2 mb-4">
             <div className="w-3 h-px bg-[#5b7c6f]" />
             <span className="text-[#3a4a3e] text-[9px] tracking-widest font-light">ACTIVE STACK</span>
@@ -459,9 +503,12 @@ export default function DataLayersPage() {
             {enabled.size === 0 && <p className="text-[#2a3a2e] text-[10px] font-light px-3 py-4">No layers active</p>}
           </div>
           <div className="mt-6 border-t border-[#1a2a1e] pt-4">
-            <a href="/portal/globe" className="block w-full text-center py-2.5 border border-[#1a2a1e] hover:border-[#5b7c6f] text-[#5b7c6f] text-[10px] tracking-widest font-light transition-colors">
+            <a href={globeHref} className="block w-full text-center py-2.5 border border-[#1a2a1e] hover:border-[#5b7c6f] text-[#5b7c6f] text-[10px] tracking-widest font-light transition-colors">
               OPEN GLOBE →
             </a>
+            <p className="text-[#2a3a2e] text-[8px] font-light mt-2 leading-relaxed">
+              Active stack carries into the globe as pre-enabled layers.
+            </p>
           </div>
         </div>
       </div>
