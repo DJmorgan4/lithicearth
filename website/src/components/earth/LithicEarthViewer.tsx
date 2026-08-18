@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from 'react'
 import { Viewer, Entity, CameraFlyTo } from 'resium'
-import { Cartesian3, Color, Ion, Terrain, buildModuleUrl } from 'cesium'
+import { Cartesian3, Color, Ion, Terrain } from 'cesium'
 import 'cesium/Build/Cesium/Widgets/widgets.css'
 
-buildModuleUrl.setBaseUrl('/cesium/')
+if (typeof window !== 'undefined') (window as any).CESIUM_BASE_URL = '/cesium/'
 
 const SITES = [
   { id: 'giza', name: 'Pyramids of Giza', lat: 29.9792, lng: 31.1342, height: 1800 },
