@@ -63,3 +63,6 @@ website/public/historical/
 data/lidar/raw/
 data/lidar/dtm/
 data/lidar/derived/
+data/lidar/las/
+data/inegi/cem/
+data/inegi/derived/
