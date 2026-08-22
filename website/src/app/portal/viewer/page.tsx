@@ -1,10 +1,10 @@
 'use client'
-import { useEffect, useRef, useState, useCallback, Suspense } from 'react'
+import { useEffect, useRef, useState, useCallback, useMemo, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import {
-  X, Layers, ChevronDown, ChevronUp,
+  X, Layers, ChevronDown, ChevronUp, Search,
   Copy, Check, ArrowLeft, Crosshair, AlertCircle, Radio,
-  Thermometer, Mountain, Eye, Atom, Zap, History, Plus
+  Thermometer, Mountain, Eye, Atom, Zap, History, Plus, Clock, Wrench
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
@@ -172,8 +172,6 @@ interface ScanData {
 }
 
 // ── Layer definitions ──────────────────────────────────────────────────
-// NOTE: duplicate cdse_sar_vv / cdse_sar_vh entries removed (they pointed
-// at the same WMS layers as the IW pair).
 const LAYER_DEFS: LayerDef[] = [{
     id: 'satellite', label: 'Satellite Imagery', group: 'Base', color: '#38bdf8', tileUrl: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', opacity: 1, active: true, source: 'Esri World Imagery', available: true, }, {
     id: 'terrain', label: 'Terrain / Hillshade', group: 'Base', color: '#fb923c', tileUrl: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Shaded_Relief/MapServer/tile/{z}/{y}/{x}', opacity: 0.6, active: false, source: 'Esri World Shaded Relief', available: true, }, {
@@ -198,10 +196,54 @@ const LAYER_DEFS: LayerDef[] = [{
     id: 'ndvi', label: 'NDVI Vegetation', group: 'Spectral', color: '#86efac', opacity: 0.75, active: false, source: 'Sentinel-2 — point readout only', available: false, }, {
     id: 'thermal', label: 'Thermal IR', group: 'Thermal', color: '#f87171', opacity: 0.7, active: false, source: 'Landsat-9 — point readout only', available: false, }]
 
-// FIX: 'Bathymetry' was missing here, so the Lake Lavon layer never
-// rendered in the sidebar even though it was defined above.
-const GROUPS = ['Base', 'Environmental', 'Geophysical', 'Bathymetry', 'Radar', 'Spectral', 'Thermal']
-// Note: unavailable Radar/Spectral/Thermal entries are point-readout only via Lithic Engine
+const GROUP_ORDER = ['Base', 'Environmental', 'Geophysical', 'Bathymetry', 'Radar', 'Spectral', 'Thermal']
+
+// ── One-tap layer presets ──────────────────────────────────────────────
+// Each preset replaces the whole overlay stack. Satellite stays as the
+// base in every preset so the map never goes blank.
+const PRESETS: { id: string; label: string; hint: string; layers: string[] }[] = [
+  { id: 'survey',   label: 'Survey',   hint: 'Clean satellite base',              layers: ['satellite'] },
+  { id: 'terrain',  label: 'Terrain',  hint: 'LiDAR hillshade + topo',            layers: ['satellite', 'lidar_hs', 'topo'] },
+  { id: 'water',    label: 'Water',    hint: 'NHD + wetlands + floodplain',       layers: ['satellite', 'hydro', 'nwi', 'fema'] },
+  { id: 'spectral', label: 'Spectral', hint: 'Live Sentinel-2 NDVI',              layers: ['satellite', 'cdse_ndvi'] },
+  { id: 'radar',    label: 'Radar',    hint: 'Live Sentinel-1 SAR VV',            layers: ['satellite', 'cdse_sar_iw_vv'] },
+  { id: 'geology',  label: 'Geology',  hint: 'USGS state geologic maps',          layers: ['satellite', 'geology'] },
+]
+
+/** Create + attach a Leaflet layer for a LayerDef. Shared by toggle,
+ *  presets, and init so the mounting logic exists exactly once. */
+async function mountLayer(map: any, l: LayerDef): Promise<any | null> {
+  const L = (await import('leaflet')).default
+  if (l.tileUrl) {
+    const tileMaxZoom = l.id === 'topo' ? 16 : 19
+    const tl = L.tileLayer(l.tileUrl, { maxZoom: tileMaxZoom, opacity: l.opacity })
+    tl.on('tileerror', (err: any) => console.warn('[viewer] tile error', l.id, err))
+    tl.addTo(map)
+    return tl
+  }
+  if (l.wmsUrl && l.wmsLayer) {
+    if (l.cdseAuth) {
+      // Authenticated CDSE WMS — proxy through /api/cdse/tiles
+      const baseWms = `${l.wmsUrl}?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&LAYERS=${encodeURIComponent(l.wmsLayer)}&FORMAT=image/png&TRANSPARENT=true&CRS=EPSG:3857&WIDTH=256&HEIGHT=256`
+      const tl = L.tileLayer(
+        `/api/cdse/tiles?url=${encodeURIComponent(baseWms + '&BBOX={bbox-epsg-3857}')}`,
+        { maxZoom: 19, opacity: l.opacity ?? 0.85, tileSize: 256, className: 'cdse-overlay' }
+      )
+      tl.addTo(map)
+      return tl
+    }
+    const wl = L.tileLayer.wms(l.wmsUrl, {
+      layers: l.wmsLayer,
+      format: 'image/png',
+      transparent: true,
+      opacity: l.opacity,
+    })
+    wl.on('tileerror', (err: any) => console.warn('[viewer] WMS error', l.id, err))
+    wl.addTo(map)
+    return wl
+  }
+  return null
+}
 
 // ── ReadoutRow ─────────────────────────────────────────────────────────
 function ReadoutRow({ label, value, sub, accent }: {
@@ -217,6 +259,10 @@ function ReadoutRow({ label, value, sub, accent }: {
     </div>
   )
 }
+
+// ── Panel tab ids ──────────────────────────────────────────────────────
+type SideTab = 'layers' | 'historical'
+type PanelTab = 'intel' | 'scan' | 'tools' | 'time'
 
 // ── Main Viewer ────────────────────────────────────────────────────────
 function ViewerInner() {
@@ -259,8 +305,10 @@ function ViewerInner() {
       active: layer.active || requested.includes(layer.id),
     }))
   })
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [sideTab, setSideTab] = useState<SideTab>('layers')
+  const [panelTab, setPanelTab] = useState<PanelTab>('intel')
+  const [layerQuery, setLayerQuery] = useState('')
   const [coords, setCoords] = useState(initCoords)
   const [cursorCoords, setCursorCoords] = useState<{ lat: number; lng: number } | null>(null)
   const [intel, setIntel] = useState<IntelData | null>(null)
@@ -292,7 +340,6 @@ function ViewerInner() {
   const [histActive, setHistActive] = useState<ActiveHistorical[]>([])
   const [histLoading, setHistLoading] = useState(false)
   const [histError, setHistError] = useState<string | null>(null)
-  const [histCollapsed, setHistCollapsed] = useState(false)
   const [histRange, setHistRange] = useState<[number, number]>([1850, 2010])
   const [swipe, setSwipe] = useState<number | null>(null)
   const [registerOpen, setRegisterOpen] = useState(false)
@@ -315,6 +362,9 @@ function ViewerInner() {
 
   const intelRef = useRef<IntelData | null>(null)
   useEffect(() => { intelRef.current = intel }, [intel])
+
+  const layersRef = useRef<LayerDef[]>(layers)
+  useEffect(() => { layersRef.current = layers }, [layers])
 
   const histRangeRef = useRef(histRange)
   useEffect(() => { histRangeRef.current = histRange }, [histRange])
@@ -516,7 +566,6 @@ function ViewerInner() {
     setHistActive(prev => prev.map(a => a.map.id === id ? { ...a, opacity: value } : a))
   }, [])
 
-  /** Bring the year band forward/back one decade across all active overlays. */
   const toggleHistorical = useCallback((hm: HistoricalMap) => {
     if (histLayerRefs.current[hm.id]) removeHistorical(hm.id)
     else addHistorical(hm)
@@ -883,12 +932,14 @@ function ViewerInner() {
       const histPane = map.getPane('historical')
       if (histPane) histPane.style.zIndex = '350'
 
-      // Base satellite tile
-      const satLayer = L.tileLayer(
-        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-        { maxZoom: 19, opacity: 1 }
-      ).addTo(map)
-      layerRefs.current['satellite'] = satLayer
+      // Mount every layer marked active — this now includes layers
+      // requested through the ?layers= URL param, which previously were
+      // flagged active in state but never actually added to the map.
+      for (const l of layersRef.current) {
+        if (!l.active || !l.available) continue
+        const inst = await mountLayer(map, l)
+        if (inst) layerRefs.current[l.id] = inst
+      }
 
       // Crosshair marker
       const icon = L.divIcon({
@@ -1016,7 +1067,7 @@ function ViewerInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // ── Anomaly heatmap overlay (previously a dead button) ──────────────
+  // ── Anomaly heatmap overlay ─────────────────────────────────────────
   // Paints scan candidates as radial-gradient heat blobs on the canvas
   // over the map, sized to real candidate diameters, redrawn on pan/zoom.
   useEffect(() => {
@@ -1068,59 +1119,46 @@ function ViewerInner() {
     }
   }, [webglOverlay, scan])
 
-  // ── Layer toggle ─────────────────────────────────────────────────────
+  // ── Layer toggle / presets ──────────────────────────────────────────
   const toggleLayer = useCallback(async (id: string) => {
-    const L = (await import('leaflet')).default
     const map = leafletRef.current
     if (!map) return
-    setLayers(prev => prev.map(l => {
-      if (l.id !== id) return l
-      const newActive = !l.active
-      if (!newActive) {
-        layerRefs.current[id]?.remove()
-        delete layerRefs.current[id]
-      } else {
-        if (l.tileUrl) {
-          const tileMaxZoom = l.id === 'topo' ? 16 : 19
-          const tl = L.tileLayer(l.tileUrl, { maxZoom: tileMaxZoom, opacity: l.opacity })
-          tl.on('tileerror', (err: any) => console.warn('[viewer] tile error', id, err))
-          tl.addTo(map)
-          layerRefs.current[id] = tl
-        } else if (l.wmsUrl && l.wmsLayer) {
-          if (l.cdseAuth) {
-            // Authenticated CDSE WMS — proxy through /api/cdse/tiles
-            const baseWms = `${l.wmsUrl}?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&LAYERS=${encodeURIComponent(l.wmsLayer)}&FORMAT=image/png&TRANSPARENT=true&CRS=EPSG:3857&WIDTH=256&HEIGHT=256`
-            const tl = L.tileLayer(
-              `/api/cdse/tiles?url=${encodeURIComponent(baseWms + '&BBOX={bbox-epsg-3857}')}`,
-              { maxZoom: 19, opacity: l.opacity ?? 0.85, tileSize: 256, className: 'cdse-overlay' }
-            )
-            tl.addTo(map)
-            layerRefs.current[id] = tl
-          } else {
-            const wl = L.tileLayer.wms(l.wmsUrl, {
-              layers: l.wmsLayer,
-              format: 'image/png',
-              transparent: true,
-              opacity: l.opacity,
-            })
-            wl.on('tileerror', (err: any) => console.warn('[viewer] WMS error', id, err))
-            wl.addTo(map)
-            layerRefs.current[id] = wl
-          }
-        }
+    const l = layersRef.current.find(x => x.id === id)
+    if (!l || !l.available) return
+
+    if (l.active) {
+      layerRefs.current[id]?.remove()
+      delete layerRefs.current[id]
+      setLayers(prev => prev.map(x => x.id === id ? { ...x, active: false } : x))
+    } else {
+      const inst = await mountLayer(map, l)
+      if (inst) layerRefs.current[id] = inst
+      setLayers(prev => prev.map(x => x.id === id ? { ...x, active: true } : x))
+    }
+  }, [])
+
+  /** Replace the whole overlay stack with a preset's layers in one tap. */
+  const applyPreset = useCallback(async (ids: string[]) => {
+    const map = leafletRef.current
+    if (!map) return
+    for (const l of layersRef.current) {
+      const want = ids.includes(l.id) && l.available
+      const mounted = !!layerRefs.current[l.id]
+      if (mounted && !want) {
+        layerRefs.current[l.id]?.remove()
+        delete layerRefs.current[l.id]
+      } else if (!mounted && want) {
+        const inst = await mountLayer(map, l)
+        if (inst) layerRefs.current[l.id] = inst
       }
-      return { ...l, active: newActive }
-    }))
+    }
+    setLayers(prev => prev.map(l => ({ ...l, active: ids.includes(l.id) && l.available })))
   }, [])
 
   const setOpacity = useCallback((id: string, opacity: number) => {
     layerRefs.current[id]?.setOpacity(opacity)
     setLayers(prev => prev.map(l => l.id === id ? { ...l, opacity } : l))
   }, [])
-
-  const toggleGroup = (g: string) => setCollapsedGroups(p => {
-    const n = new Set(p); n.has(g) ? n.delete(g) : n.add(g); return n
-  })
 
   const copyCoords = () => {
     navigator.clipboard.writeText(`${coords.lat}, ${coords.lng}`)
@@ -1144,6 +1182,37 @@ function ViewerInner() {
   const activeHistIds = new Set(histActive.map(a => a.map.id))
   const restrictedCount = histActive.filter(a => !COMMERCIAL_OK.has(a.map.license)).length
 
+  const activeCount = layers.filter(l => l.active).length
+  const activeIdSet = useMemo(() => new Set(layers.filter(l => l.active).map(l => l.id)), [layers])
+
+  /** Which preset (if any) exactly matches the current stack — for highlighting. */
+  const activePresetId = useMemo(() => {
+    for (const p of PRESETS) {
+      const set = new Set(p.layers)
+      if (set.size === activeIdSet.size && [...set].every(id => activeIdSet.has(id))) return p.id
+    }
+    return null
+  }, [activeIdSet])
+
+  /** Flat, searchable layer list, ordered by group. */
+  const visibleLayers = useMemo(() => {
+    const q = layerQuery.trim().toLowerCase()
+    const filtered = q
+      ? layers.filter(l =>
+          l.label.toLowerCase().includes(q) ||
+          l.source.toLowerCase().includes(q) ||
+          l.group.toLowerCase().includes(q))
+      : layers
+    return [...filtered].sort((a, b) => {
+      const ga = GROUP_ORDER.indexOf(a.group)
+      const gb = GROUP_ORDER.indexOf(b.group)
+      if (ga !== gb) return ga - gb
+      // Active layers float to the top of their group
+      if (a.active !== b.active) return a.active ? -1 : 1
+      return 0
+    })
+  }, [layers, layerQuery])
+
   useEffect(() => {
     if (aoiHistory.length) {
       localStorage.setItem('lithicearth:aoi-history', JSON.stringify(aoiHistory))
@@ -1154,42 +1223,113 @@ function ViewerInner() {
     loadSavedAOIs()
   }, [loadSavedAOIs])
 
+  const panelTabs: { id: PanelTab; label: string; badge?: number }[] = [
+    { id: 'intel', label: 'INTEL' },
+    { id: 'scan', label: 'SCAN', badge: scan?.candidates.length },
+    { id: 'tools', label: 'TOOLS' },
+    { id: 'time', label: 'TIME' },
+  ]
+
   return (
     <div className="flex h-screen bg-[#0a0e0b] overflow-hidden font-light">
 
-      {/* ── Layer Sidebar ─────────────────────────────────────────────── */}
+      {/* ── Left Sidebar: LAYERS / HISTORICAL ─────────────────────────── */}
       {sidebarOpen && (
-        <aside className="fixed md:relative inset-y-0 left-0 w-64 h-full bg-[#0b0f0c] border-r border-[#1a2a1e] flex flex-col z-30 flex-shrink-0 overflow-y-auto">
-          <div className="px-4 py-3 border-b border-[#1a2a1e] flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Layers size={11} className="text-[#5b7c6f]" />
-              <span className="text-[#5b7c6f] text-[9px] tracking-[0.3em]">DATA LAYERS</span>
-            </div>
-            <span className="text-[#2a3a2e] text-[9px]">{layers.filter(l => l.active).length} on</span>
-          </div>
-          <div className="flex-1 overflow-y-auto">
-            {GROUPS.map(group => {
-              const gl = layers.filter(l => l.group === group)
-              if (!gl.length) return null
-              const collapsed = collapsedGroups.has(group)
+        <aside className="fixed md:relative inset-y-0 left-0 w-64 h-full bg-[#0b0f0c] border-r border-[#1a2a1e] flex flex-col z-30 flex-shrink-0">
 
-              return (
-                <div key={group}>
-                  <button
-                    onClick={() => toggleGroup(group)}
-                    className="w-full flex items-center justify-between px-4 py-2.5 text-[#2a3a2e] hover:text-[#5b7c6f] transition-colors border-b border-[#111a14]"
-                  >
-                    <span className="text-[8px] tracking-[0.3em]">{group.toUpperCase()}</span>
-                    {collapsed ? <ChevronDown size={9} /> : <ChevronUp size={9} />}
-                  </button>
-                  {!collapsed && gl.map(layer => (
-                    <div key={layer.id} className="border-b border-[#0f160f]">
-                      <div className="flex items-center gap-2 px-4 py-2.5">
+          {/* Tab bar */}
+          <div className="flex border-b border-[#1a2a1e]">
+            <button
+              onClick={() => setSideTab('layers')}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-[8px] tracking-[0.25em] transition-colors border-b-2 ${
+                sideTab === 'layers'
+                  ? 'border-[#D4AF37] text-[#D4AF37]'
+                  : 'border-transparent text-[#3a4a3e] hover:text-[#5b7c6f]'
+              }`}
+            >
+              <Layers size={10} /> LAYERS
+              <span className="text-[#2a3a2e]">{activeCount}</span>
+            </button>
+            <button
+              onClick={() => setSideTab('historical')}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-[8px] tracking-[0.25em] transition-colors border-b-2 ${
+                sideTab === 'historical'
+                  ? 'border-[#D4AF37] text-[#D4AF37]'
+                  : 'border-transparent text-[#3a4a3e] hover:text-[#5b7c6f]'
+              }`}
+            >
+              <History size={10} /> HISTORICAL
+              {histActive.length > 0 && <span className="text-[#D4AF37]">{histActive.length}</span>}
+            </button>
+          </div>
+
+          {/* ── LAYERS TAB ──────────────────────────────────────────── */}
+          {sideTab === 'layers' && (
+            <div className="flex-1 overflow-y-auto">
+
+              {/* Presets — one tap swaps the whole stack */}
+              <div className="px-3 pt-3 pb-2 border-b border-[#111a14]">
+                <p className="text-[#2a3a2e] text-[7px] tracking-[0.25em] mb-2">QUICK VIEWS</p>
+                <div className="grid grid-cols-3 gap-1">
+                  {PRESETS.map(p => (
+                    <button
+                      key={p.id}
+                      onClick={() => applyPreset(p.layers)}
+                      title={p.hint}
+                      className={`py-2 border text-[8px] tracking-[0.1em] uppercase transition-colors ${
+                        activePresetId === p.id
+                          ? 'border-[#D4AF37]/70 text-[#D4AF37] bg-[#D4AF37]/5'
+                          : 'border-[#1a2a1e] text-[#5b7c6f] hover:border-[#5b7c6f]'
+                      }`}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Search */}
+              <div className="px-3 py-2 border-b border-[#111a14]">
+                <div className="flex items-center gap-2 bg-[#09100b] border border-[#1a2a1e] px-2 focus-within:border-[#5b7c6f] transition-colors">
+                  <Search size={10} className="text-[#3a4a3e] flex-shrink-0" />
+                  <input
+                    value={layerQuery}
+                    onChange={e => setLayerQuery(e.target.value)}
+                    placeholder="Find a layer…"
+                    className="w-full bg-transparent py-1.5 text-[10px] text-[#c8c4ba] placeholder-[#2a3a2e] outline-none"
+                  />
+                  {layerQuery && (
+                    <button onClick={() => setLayerQuery('')} className="text-[#3a4a3e] hover:text-[#5b7c6f]">
+                      <X size={10} />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Flat layer list */}
+              {visibleLayers.length === 0 && (
+                <p className="px-4 py-4 text-[#2a3a2e] text-[9px]">
+                  No layers match “{layerQuery}”. Try “lidar”, “water”, or “SAR”.
+                </p>
+              )}
+              {visibleLayers.map((layer, i) => {
+                const prev = visibleLayers[i - 1]
+                const showGroupCaption = !prev || prev.group !== layer.group
+                return (
+                  <div key={layer.id}>
+                    {showGroupCaption && (
+                      <p className="px-4 pt-2.5 pb-1 text-[#2a3a2e] text-[7px] tracking-[0.3em]">
+                        {layer.group.toUpperCase()}
+                      </p>
+                    )}
+                    <div className="border-b border-[#0f160f]">
+                      <div className="flex items-center gap-2 px-4 py-2">
                         <button
                           onClick={() => layer.available && toggleLayer(layer.id)}
                           disabled={!layer.available}
                           className="relative w-6 h-3 rounded-full flex-shrink-0 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                           style={{ background: layer.active ? layer.color + '40' : '#1a2a1e' }}
+                          aria-label={`Toggle ${layer.label}`}
                         >
                           <span
                             className="absolute top-0.5 w-2 h-2 rounded-full transition-all"
@@ -1201,268 +1341,256 @@ function ViewerInner() {
                         </button>
                         <div className="flex-1 min-w-0">
                           <p className={`text-[10px] truncate transition-colors ${!layer.available ? 'text-[#2a3a2e]' : layer.active ? 'text-[#c8c4ba]' : 'text-[#3a4a3e]'}`}>
-                            {layer.label}{!layer.available ? ' ↗' : ''}
+                            {layer.label}
                           </p>
-                          <p className="text-[#2a3a2e] text-[8px]">{!layer.available ? 'point readout only — click map to read' : layer.source}</p>
+                          <p className="text-[#2a3a2e] text-[8px] truncate">
+                            {!layer.available ? 'readout only — click map to read' : layer.source}
+                          </p>
                         </div>
                       </div>
                       {layer.active && (
-                        <div className="px-4 pb-2.5 pl-12">
+                        <div className="px-4 pb-2 pl-12">
                           <input
                             type="range" min="0" max="1" step="0.05"
                             value={layer.opacity}
                             onChange={e => setOpacity(layer.id, Number(e.target.value))}
                             className="w-full h-px cursor-pointer"
                             style={{ accentColor: layer.color }}
+                            aria-label={`Opacity for ${layer.label}`}
                           />
                         </div>
                       )}
                     </div>
-                  ))}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* ── HISTORICAL TAB ──────────────────────────────────────── */}
+          {sideTab === 'historical' && (
+            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+              {histLoading && (
+                <p className="text-[#2a3a2e] text-[7px] tracking-[0.2em] animate-pulse">SYNCING CATALOG…</p>
+              )}
+
+              {/* Year band */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[#2a3a2e] text-[7px] tracking-[0.2em]">YEAR BAND</span>
+                  <span className="text-[#5b7c6f] text-[8px] font-mono">
+                    {histRange[0]}–{histRange[1]}
+                  </span>
                 </div>
-              )
-            })}
+                <input
+                  type="range" min={1700} max={2010} step={10}
+                  value={histRange[0]}
+                  onChange={e => setHistRange(([, hi]) => [Math.min(Number(e.target.value), hi - 10), hi])}
+                  className="w-full h-px cursor-pointer mb-1"
+                  style={{ accentColor: '#D4AF37' }}
+                  aria-label="Earliest publication year"
+                />
+                <input
+                  type="range" min={1700} max={2010} step={10}
+                  value={histRange[1]}
+                  onChange={e => setHistRange(([lo]) => [lo, Math.max(Number(e.target.value), lo + 10)])}
+                  className="w-full h-px cursor-pointer"
+                  style={{ accentColor: '#D4AF37' }}
+                  aria-label="Latest publication year"
+                />
+              </div>
 
-            {/* ── HISTORICAL OVERLAYS ─────────────────────────────────── */}
-            <div className="border-t border-[#1a2a1e]">
-              <button
-                onClick={() => setHistCollapsed(v => !v)}
-                className="w-full flex items-center justify-between px-4 py-2.5 text-[#2a3a2e] hover:text-[#5b7c6f] transition-colors border-b border-[#111a14]"
-              >
-                <span className="flex items-center gap-1.5">
-                  <History size={9} className="text-[#D4AF37]" />
-                  <span className="text-[8px] tracking-[0.3em] text-[#D4AF37]">HISTORICAL</span>
-                </span>
-                <span className="flex items-center gap-1.5">
-                  {histLoading && <span className="text-[7px] text-[#2a3a2e] animate-pulse">SYNC</span>}
-                  {histActive.length > 0 && (
-                    <span className="text-[7px] text-[#D4AF37]">{histActive.length}</span>
-                  )}
-                  {histCollapsed ? <ChevronDown size={9} /> : <ChevronUp size={9} />}
-                </span>
-              </button>
+              {/* Swipe compare */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[#2a3a2e] text-[7px] tracking-[0.2em]">SWIPE COMPARE</span>
+                  <button
+                    onClick={() => setSwipe(v => (v === null ? 0.5 : null))}
+                    className={`text-[7px] tracking-[0.15em] px-1.5 py-0.5 border transition-colors ${
+                      swipe !== null
+                        ? 'border-[#D4AF37]/60 text-[#D4AF37]'
+                        : 'border-[#1a2a1e] text-[#5b7c6f] hover:border-[#5b7c6f]'
+                    }`}
+                  >
+                    {swipe !== null ? 'ON' : 'OFF'}
+                  </button>
+                </div>
+                {swipe !== null && (
+                  <input
+                    type="range" min={0} max={1} step={0.01}
+                    value={swipe}
+                    onChange={e => setSwipe(Number(e.target.value))}
+                    className="w-full h-px cursor-pointer"
+                    style={{ accentColor: '#D4AF37' }}
+                    aria-label="Swipe position"
+                  />
+                )}
+              </div>
 
-              {!histCollapsed && (
-                <div className="px-4 py-3 space-y-3">
-                  {/* Year band */}
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-[#2a3a2e] text-[7px] tracking-[0.2em]">YEAR BAND</span>
-                      <span className="text-[#5b7c6f] text-[8px] font-mono">
-                        {histRange[0]}–{histRange[1]}
-                      </span>
-                    </div>
-                    <input
-                      type="range" min={1700} max={2010} step={10}
-                      value={histRange[0]}
-                      onChange={e => setHistRange(([, hi]) => [Math.min(Number(e.target.value), hi - 10), hi])}
-                      className="w-full h-px cursor-pointer mb-1"
-                      style={{ accentColor: '#D4AF37' }}
-                      aria-label="Earliest publication year"
-                    />
-                    <input
-                      type="range" min={1700} max={2010} step={10}
-                      value={histRange[1]}
-                      onChange={e => setHistRange(([lo]) => [lo, Math.max(Number(e.target.value), lo + 10)])}
-                      className="w-full h-px cursor-pointer"
-                      style={{ accentColor: '#D4AF37' }}
-                      aria-label="Latest publication year"
-                    />
-                  </div>
-
-                  {/* Swipe compare */}
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-[#2a3a2e] text-[7px] tracking-[0.2em]">SWIPE COMPARE</span>
-                      <button
-                        onClick={() => setSwipe(v => (v === null ? 0.5 : null))}
-                        className={`text-[7px] tracking-[0.15em] px-1.5 py-0.5 border transition-colors ${
-                          swipe !== null
-                            ? 'border-[#D4AF37]/60 text-[#D4AF37]'
-                            : 'border-[#1a2a1e] text-[#5b7c6f] hover:border-[#5b7c6f]'
-                        }`}
-                      >
-                        {swipe !== null ? 'ON' : 'OFF'}
-                      </button>
-                    </div>
-                    {swipe !== null && (
-                      <input
-                        type="range" min={0} max={1} step={0.01}
-                        value={swipe}
-                        onChange={e => setSwipe(Number(e.target.value))}
-                        className="w-full h-px cursor-pointer"
-                        style={{ accentColor: '#D4AF37' }}
-                        aria-label="Swipe position"
-                      />
-                    )}
-                  </div>
-
-                  {/* Active overlays */}
-                  {histActive.length > 0 && (
-                    <div className="border-t border-[#111a14] pt-2 space-y-2">
-                      <p className="text-[#2a3a2e] text-[7px] tracking-[0.2em]">ACTIVE</p>
-                      {histActive.map(a => (
-                        <div key={a.map.id}>
-                          <div className="flex items-center justify-between gap-2 mb-1">
-                            <span className="text-[#c8c4ba] text-[9px] truncate" title={a.map.title}>
-                              {a.map.year ?? '—'} · {a.map.title}
-                            </span>
-                            <button
-                              onClick={() => removeHistorical(a.map.id)}
-                              className="text-[#2a3a2e] hover:text-[#f87171] flex-shrink-0"
-                              aria-label={`Remove ${a.map.title}`}
-                            >
-                              <X size={9} />
-                            </button>
-                          </div>
-                          <input
-                            type="range" min={0} max={1} step={0.02}
-                            value={a.opacity}
-                            onChange={e => setHistoricalOpacity(a.map.id, Number(e.target.value))}
-                            className="w-full h-px cursor-pointer"
-                            style={{ accentColor: '#D4AF37' }}
-                            aria-label={`Opacity for ${a.map.title}`}
-                          />
-                        </div>
-                      ))}
-                      {restrictedCount > 0 && (
-                        <p className="text-[#fbbf24] text-[7px] leading-relaxed border-l border-[#fbbf24]/30 pl-2">
-                          {restrictedCount} overlay{restrictedCount > 1 ? 's are' : ' is'} viewer-only
-                          under its license and will be excluded from report export.
-                        </p>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Results in view */}
-                  <div className="border-t border-[#111a14] pt-2">
-                    <p className="text-[#2a3a2e] text-[7px] tracking-[0.2em] mb-1.5">IN THIS VIEW</p>
-                    {histError && (
-                      <p className="text-[#f87171] text-[8px] leading-relaxed">{histError}</p>
-                    )}
-                    {!histError && !histLoading && histResults.length === 0 && (
-                      <p className="text-[#2a3a2e] text-[8px] leading-relaxed">
-                        No georeferenced maps here in that year band. Widen the band, zoom
-                        out, or register one below.
-                      </p>
-                    )}
-                    <div className="max-h-52 overflow-y-auto">
-                      {histResults.map(r => {
-                        const on = activeHistIds.has(r.id)
-                        return (
-                          <button
-                            key={r.id}
-                            onClick={() => toggleHistorical(r)}
-                            className={`w-full text-left border-b border-[#0f160f] py-1.5 px-1 -mx-1 transition-colors ${
-                              on ? 'bg-[#D4AF37]/5' : 'hover:bg-[#111a14]'
-                            }`}
-                          >
-                            <p className={`text-[9px] truncate ${on ? 'text-[#D4AF37]' : 'text-[#c8c4ba]'}`}>
-                              {r.title}
-                            </p>
-                            <p className="text-[#2a3a2e] text-[7px] truncate">
-                              {r.year ?? 'undated'} · {r.publisher ?? r.source}
-                              {!COMMERCIAL_OK.has(r.license) && (
-                                <span className="text-[#fbbf24]"> · {r.license}</span>
-                              )}
-                            </p>
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Register a map */}
-                  <div className="border-t border-[#111a14] pt-2">
-                    <button
-                      onClick={() => setRegisterOpen(v => !v)}
-                      className="w-full flex items-center justify-center gap-1 py-1.5 border border-[#1a2a1e] hover:border-[#5b7c6f] text-[#5b7c6f] text-[7px] tracking-[0.2em] transition-colors"
-                    >
-                      <Plus size={8} /> REGISTER MAP TO THIS VIEW
-                    </button>
-
-                    {registerOpen && (
-                      <div className="mt-2 space-y-1.5">
-                        <p className="text-[#2a3a2e] text-[7px] leading-relaxed">
-                          Footprint is taken from the current viewport — frame the map
-                          extent before saving.
-                        </p>
-                        <input
-                          value={registerForm.title}
-                          onChange={e => setRegisterForm(f => ({ ...f, title: e.target.value }))}
-                          placeholder="Title"
-                          className="w-full bg-[#09100b] border border-[#1a2a1e] px-2 py-1 text-[9px] text-[#c8c4ba] placeholder-[#2a3a2e] focus:border-[#5b7c6f] outline-none"
-                        />
-                        <div className="grid grid-cols-2 gap-1.5">
-                          <input
-                            value={registerForm.year}
-                            onChange={e => setRegisterForm(f => ({ ...f, year: e.target.value }))}
-                            placeholder="Year"
-                            inputMode="numeric"
-                            className="w-full bg-[#09100b] border border-[#1a2a1e] px-2 py-1 text-[9px] text-[#c8c4ba] placeholder-[#2a3a2e] focus:border-[#5b7c6f] outline-none"
-                          />
-                          <select
-                            value={registerForm.kind}
-                            onChange={e => setRegisterForm(f => ({ ...f, kind: e.target.value as HistoricalKind }))}
-                            className="w-full bg-[#09100b] border border-[#1a2a1e] px-2 py-1 text-[9px] text-[#c8c4ba] focus:border-[#5b7c6f] outline-none"
-                          >
-                            <option value="xyz">XYZ tiles</option>
-                            <option value="wms">WMS</option>
-                            <option value="allmaps">Allmaps IIIF</option>
-                          </select>
-                        </div>
-                        <input
-                          value={registerForm.url}
-                          onChange={e => setRegisterForm(f => ({ ...f, url: e.target.value }))}
-                          placeholder={
-                            registerForm.kind === 'allmaps'
-                              ? 'Georeference Annotation URL'
-                              : registerForm.kind === 'wms'
-                              ? 'WMS GetMap endpoint'
-                              : 'https://…/{z}/{x}/{y}.png'
-                          }
-                          className="w-full bg-[#09100b] border border-[#1a2a1e] px-2 py-1 text-[9px] text-[#c8c4ba] placeholder-[#2a3a2e] focus:border-[#5b7c6f] outline-none"
-                        />
-                        <input
-                          value={registerForm.attribution}
-                          onChange={e => setRegisterForm(f => ({ ...f, attribution: e.target.value }))}
-                          placeholder="Attribution (required by most collections)"
-                          className="w-full bg-[#09100b] border border-[#1a2a1e] px-2 py-1 text-[9px] text-[#c8c4ba] placeholder-[#2a3a2e] focus:border-[#5b7c6f] outline-none"
-                        />
-                        <select
-                          value={registerForm.license}
-                          onChange={e => setRegisterForm(f => ({ ...f, license: e.target.value }))}
-                          className="w-full bg-[#09100b] border border-[#1a2a1e] px-2 py-1 text-[9px] text-[#c8c4ba] focus:border-[#5b7c6f] outline-none"
-                        >
-                          <option value="public-domain">public-domain (USGS, LOC)</option>
-                          <option value="cc0">cc0</option>
-                          <option value="licensed">licensed (written permission)</option>
-                          <option value="cc-by-nc-sa">cc-by-nc-sa (Rumsey — viewer only)</option>
-                          <option value="unknown">unknown</option>
-                        </select>
-                        <label className="flex items-center gap-1.5 text-[#5b7c6f] text-[8px]">
-                          <input
-                            type="checkbox"
-                            checked={registerForm.proxy}
-                            onChange={e => setRegisterForm(f => ({ ...f, proxy: e.target.checked }))}
-                            style={{ accentColor: '#D4AF37' }}
-                          />
-                          Route tiles through /api/tiles/proxy
-                        </label>
+              {/* Active overlays */}
+              {histActive.length > 0 && (
+                <div className="border-t border-[#111a14] pt-2 space-y-2">
+                  <p className="text-[#2a3a2e] text-[7px] tracking-[0.2em]">ACTIVE</p>
+                  {histActive.map(a => (
+                    <div key={a.map.id}>
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <span className="text-[#c8c4ba] text-[9px] truncate" title={a.map.title}>
+                          {a.map.year ?? '—'} · {a.map.title}
+                        </span>
                         <button
-                          onClick={registerHistorical}
-                          disabled={registerBusy || !registerForm.title || !registerForm.url}
-                          className="w-full py-1.5 border border-[#D4AF37]/30 hover:border-[#D4AF37]/70 text-[#D4AF37] text-[8px] tracking-[0.2em] transition-colors disabled:opacity-40"
+                          onClick={() => removeHistorical(a.map.id)}
+                          className="text-[#2a3a2e] hover:text-[#f87171] flex-shrink-0"
+                          aria-label={`Remove ${a.map.title}`}
                         >
-                          {registerBusy ? 'SAVING…' : 'SAVE TO CATALOG'}
+                          <X size={9} />
                         </button>
                       </div>
-                    )}
-                  </div>
+                      <input
+                        type="range" min={0} max={1} step={0.02}
+                        value={a.opacity}
+                        onChange={e => setHistoricalOpacity(a.map.id, Number(e.target.value))}
+                        className="w-full h-px cursor-pointer"
+                        style={{ accentColor: '#D4AF37' }}
+                        aria-label={`Opacity for ${a.map.title}`}
+                      />
+                    </div>
+                  ))}
+                  {restrictedCount > 0 && (
+                    <p className="text-[#fbbf24] text-[7px] leading-relaxed border-l border-[#fbbf24]/30 pl-2">
+                      {restrictedCount} overlay{restrictedCount > 1 ? 's are' : ' is'} viewer-only
+                      under its license and will be excluded from report export.
+                    </p>
+                  )}
                 </div>
               )}
+
+              {/* Results in view */}
+              <div className="border-t border-[#111a14] pt-2">
+                <p className="text-[#2a3a2e] text-[7px] tracking-[0.2em] mb-1.5">IN THIS VIEW</p>
+                {histError && (
+                  <p className="text-[#f87171] text-[8px] leading-relaxed">{histError}</p>
+                )}
+                {!histError && !histLoading && histResults.length === 0 && (
+                  <p className="text-[#2a3a2e] text-[8px] leading-relaxed">
+                    No georeferenced maps here in that year band. Widen the band, zoom
+                    out, or register one below.
+                  </p>
+                )}
+                <div className="max-h-64 overflow-y-auto">
+                  {histResults.map(r => {
+                    const on = activeHistIds.has(r.id)
+                    return (
+                      <button
+                        key={r.id}
+                        onClick={() => toggleHistorical(r)}
+                        className={`w-full text-left border-b border-[#0f160f] py-1.5 px-1 -mx-1 transition-colors ${
+                          on ? 'bg-[#D4AF37]/5' : 'hover:bg-[#111a14]'
+                        }`}
+                      >
+                        <p className={`text-[9px] truncate ${on ? 'text-[#D4AF37]' : 'text-[#c8c4ba]'}`}>
+                          {r.title}
+                        </p>
+                        <p className="text-[#2a3a2e] text-[7px] truncate">
+                          {r.year ?? 'undated'} · {r.publisher ?? r.source}
+                          {!COMMERCIAL_OK.has(r.license) && (
+                            <span className="text-[#fbbf24]"> · {r.license}</span>
+                          )}
+                        </p>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Register a map */}
+              <div className="border-t border-[#111a14] pt-2">
+                <button
+                  onClick={() => setRegisterOpen(v => !v)}
+                  className="w-full flex items-center justify-center gap-1 py-1.5 border border-[#1a2a1e] hover:border-[#5b7c6f] text-[#5b7c6f] text-[7px] tracking-[0.2em] transition-colors"
+                >
+                  <Plus size={8} /> REGISTER MAP TO THIS VIEW
+                </button>
+
+                {registerOpen && (
+                  <div className="mt-2 space-y-1.5">
+                    <p className="text-[#2a3a2e] text-[7px] leading-relaxed">
+                      Footprint is taken from the current viewport — frame the map
+                      extent before saving.
+                    </p>
+                    <input
+                      value={registerForm.title}
+                      onChange={e => setRegisterForm(f => ({ ...f, title: e.target.value }))}
+                      placeholder="Title"
+                      className="w-full bg-[#09100b] border border-[#1a2a1e] px-2 py-1 text-[9px] text-[#c8c4ba] placeholder-[#2a3a2e] focus:border-[#5b7c6f] outline-none"
+                    />
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <input
+                        value={registerForm.year}
+                        onChange={e => setRegisterForm(f => ({ ...f, year: e.target.value }))}
+                        placeholder="Year"
+                        inputMode="numeric"
+                        className="w-full bg-[#09100b] border border-[#1a2a1e] px-2 py-1 text-[9px] text-[#c8c4ba] placeholder-[#2a3a2e] focus:border-[#5b7c6f] outline-none"
+                      />
+                      <select
+                        value={registerForm.kind}
+                        onChange={e => setRegisterForm(f => ({ ...f, kind: e.target.value as HistoricalKind }))}
+                        className="w-full bg-[#09100b] border border-[#1a2a1e] px-2 py-1 text-[9px] text-[#c8c4ba] focus:border-[#5b7c6f] outline-none"
+                      >
+                        <option value="xyz">XYZ tiles</option>
+                        <option value="wms">WMS</option>
+                        <option value="allmaps">Allmaps IIIF</option>
+                      </select>
+                    </div>
+                    <input
+                      value={registerForm.url}
+                      onChange={e => setRegisterForm(f => ({ ...f, url: e.target.value }))}
+                      placeholder={
+                        registerForm.kind === 'allmaps'
+                          ? 'Georeference Annotation URL'
+                          : registerForm.kind === 'wms'
+                          ? 'WMS GetMap endpoint'
+                          : 'https://…/{z}/{x}/{y}.png'
+                      }
+                      className="w-full bg-[#09100b] border border-[#1a2a1e] px-2 py-1 text-[9px] text-[#c8c4ba] placeholder-[#2a3a2e] focus:border-[#5b7c6f] outline-none"
+                    />
+                    <input
+                      value={registerForm.attribution}
+                      onChange={e => setRegisterForm(f => ({ ...f, attribution: e.target.value }))}
+                      placeholder="Attribution (required by most collections)"
+                      className="w-full bg-[#09100b] border border-[#1a2a1e] px-2 py-1 text-[9px] text-[#c8c4ba] placeholder-[#2a3a2e] focus:border-[#5b7c6f] outline-none"
+                    />
+                    <select
+                      value={registerForm.license}
+                      onChange={e => setRegisterForm(f => ({ ...f, license: e.target.value }))}
+                      className="w-full bg-[#09100b] border border-[#1a2a1e] px-2 py-1 text-[9px] text-[#c8c4ba] focus:border-[#5b7c6f] outline-none"
+                    >
+                      <option value="public-domain">public-domain (USGS, LOC)</option>
+                      <option value="cc0">cc0</option>
+                      <option value="licensed">licensed (written permission)</option>
+                      <option value="cc-by-nc-sa">cc-by-nc-sa (Rumsey — viewer only)</option>
+                      <option value="unknown">unknown</option>
+                    </select>
+                    <label className="flex items-center gap-1.5 text-[#5b7c6f] text-[8px]">
+                      <input
+                        type="checkbox"
+                        checked={registerForm.proxy}
+                        onChange={e => setRegisterForm(f => ({ ...f, proxy: e.target.checked }))}
+                        style={{ accentColor: '#D4AF37' }}
+                      />
+                      Route tiles through /api/tiles/proxy
+                    </label>
+                    <button
+                      onClick={registerHistorical}
+                      disabled={registerBusy || !registerForm.title || !registerForm.url}
+                      className="w-full py-1.5 border border-[#D4AF37]/30 hover:border-[#D4AF37]/70 text-[#D4AF37] text-[8px] tracking-[0.2em] transition-colors disabled:opacity-40"
+                    >
+                      {registerBusy ? 'SAVING…' : 'SAVE TO CATALOG'}
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="px-4 py-3 border-t border-[#1a2a1e]">
             <button
@@ -1482,6 +1610,7 @@ function ViewerInner() {
         <button
           onClick={() => setSidebarOpen(!sidebarOpen)}
           className="absolute top-4 left-4 z-20 bg-[#0b0f0c] border border-[#1a2a1e] p-2 hover:border-[#2a3d2e] transition-colors"
+          aria-label="Toggle layer sidebar"
         >
           <Layers size={13} className="text-[#5b7c6f]" />
         </button>
@@ -1491,10 +1620,12 @@ function ViewerInner() {
           <button
             onClick={() => leafletRef.current?.zoomIn()}
             className="w-8 h-8 bg-[#0b0f0c] border border-[#1a2a1e] hover:border-[#2a3d2e] text-[#5b7c6f] text-lg leading-none flex items-center justify-center transition-colors"
+            aria-label="Zoom in"
           >+</button>
           <button
             onClick={() => leafletRef.current?.zoomOut()}
             className="w-8 h-8 bg-[#0b0f0c] border border-[#1a2a1e] hover:border-[#2a3d2e] text-[#5b7c6f] text-lg leading-none flex items-center justify-center transition-colors"
+            aria-label="Zoom out"
           >−</button>
         </div>
 
@@ -1569,581 +1700,631 @@ function ViewerInner() {
           <span className="text-[#D4AF37] text-[9px] tracking-[0.2em] font-mono">
             {coords.lat}° · {coords.lng}°
           </span>
-          <button onClick={copyCoords} className="text-[#2a3a2e] hover:text-[#5b7c6f] transition-colors">
+          <button onClick={copyCoords} className="text-[#2a3a2e] hover:text-[#5b7c6f] transition-colors" aria-label="Copy coordinates">
             {copied ? <Check size={10} /> : <Copy size={10} />}
           </button>
         </div>
       </div>
 
-      {/* ── Intel Panel ───────────────────────────────────────────────── */}
-      <div className="hidden md:flex md:w-64 h-full bg-[#0b0f0c] border-l border-[#1a2a1e] flex-col z-10 flex-shrink-0 overflow-y-auto">
-        <div className="px-4 py-3 border-b border-[#1a2a1e] flex items-center justify-between">
+      {/* ── Right Panel: INTEL / SCAN / TOOLS / TIME ──────────────────── */}
+      <div className="hidden md:flex md:w-64 h-full bg-[#0b0f0c] border-l border-[#1a2a1e] flex-col z-10 flex-shrink-0">
+
+        {/* Engine status */}
+        <div className="px-4 py-2.5 border-b border-[#1a2a1e] flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-1.5 h-1.5 rounded-full bg-[#5b7c6f]" />
             <span className="text-[#5b7c6f] text-[9px] tracking-[0.3em]">LITHIC ENGINE</span>
           </div>
-          {intelLoading && (
-            <span className="text-[#2a3a2e] text-[8px] animate-pulse">SCANNING...</span>
+          {(intelLoading || scanLoading) && (
+            <span className="text-[#2a3a2e] text-[8px] animate-pulse">WORKING…</span>
           )}
-          {!intelLoading && intel && (
+          {!intelLoading && !scanLoading && intel && (
             <span className="text-[#2a3a2e] text-[8px]">
               {Math.round(intel.measurement_quality * 100)}% PIXEL
             </span>
           )}
         </div>
 
-        <div className="flex-1">
-          {intelLoading && (
-            <div className="p-4 md:p-6 flex flex-col items-center gap-3">
-              <div className="w-8 h-8 border border-[#1a2a1e] border-t-[#5b7c6f] rounded-full animate-spin" />
-              <p className="text-[#2a3a2e] text-[9px] tracking-widest">QUERYING SATELLITES</p>
-            </div>
-          )}
-
-          {intelError && !intelLoading && (
-            <div className="p-5">
-              <div className="border border-[#f87171]/20 px-4 py-3 flex items-start gap-2">
-                <AlertCircle size={11} className="text-[#f87171] flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-[#f87171] text-[9px] tracking-widest mb-1">ENGINE OFFLINE</p>
-                  <p className="text-[#3a4a3e] text-[8px] leading-relaxed">
-                    Lithic Engine timed out. Railway may be cold-starting — try Refresh Intel.
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {intel && !intelLoading && (
-            <div className="p-4 space-y-4">
-              {/* Location */}
-              <div>
-                <p className="text-[#2a3a2e] text-[8px] tracking-[0.25em] mb-2">COORDINATES</p>
-                <ReadoutRow label="LAT" value={`${intel.location.lat}°`} />
-                <ReadoutRow label="LNG" value={`${intel.location.lng}°`} />
-              </div>
-
-              {/* Elevation */}
-              {elev?.status === 'found' && (
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <Mountain size={9} style={{ color: '#fb923c' }} />
-                    <p className="text-[8px] tracking-[0.25em]" style={{ color: '#fb923c' }}>ELEVATION</p>
-                  </div>
-                  <ReadoutRow
-                    label="ALT"
-                    value={`${elev.value}m`}
-                    sub={`${elev.source} · ${elev.resolution_m}m res`}
-                    accent="#fb923c"
-                  />
-                </div>
+        {/* Tab bar */}
+        <div className="flex border-b border-[#1a2a1e]">
+          {panelTabs.map(t => (
+            <button
+              key={t.id}
+              onClick={() => setPanelTab(t.id)}
+              className={`flex-1 py-2.5 text-[7px] tracking-[0.2em] transition-colors border-b-2 relative ${
+                panelTab === t.id
+                  ? 'border-[#D4AF37] text-[#D4AF37]'
+                  : 'border-transparent text-[#3a4a3e] hover:text-[#5b7c6f]'
+              }`}
+            >
+              {t.label}
+              {t.badge != null && t.badge > 0 && (
+                <span className={`ml-1 ${panelTab === t.id ? 'text-[#D4AF37]' : 'text-[#5b7c6f]'}`}>{t.badge}</span>
               )}
-
-              {/* NDVI */}
-              {ndvi?.status === 'found' && (
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <Eye size={9} style={{ color: '#4ade80' }} />
-                    <p className="text-[8px] tracking-[0.25em]" style={{ color: '#4ade80' }}>VEGETATION</p>
-                  </div>
-                  <ReadoutRow
-                    label="NDVI"
-                    value={ndvi.value !== null ? ndvi.value.toString() : '—'}
-                    sub={ndvi.method === 'pixel_sample_B08_B04' ? '10m pixel · B08/B04' : 'scene estimate'}
-                    accent={ndvi.value !== null ? (ndvi.value > 0.5 ? '#4ade80' : ndvi.value > 0.2 ? '#fbbf24' : '#f87171') : '#3a4a3e'}
-                  />
-                  {s2meta?.cloud_cover !== undefined && (
-                    <ReadoutRow
-                      label="CLOUD"
-                      value={`${s2meta.cloud_cover.toFixed(1)}%`}
-                      sub={s2meta.date?.slice(0, 10)}
-                    />
-                  )}
-                </div>
-              )}
-
-              {/* SAR */}
-              {sar?.status === 'found' && (
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <Radio size={9} style={{ color: '#38bdf8' }} />
-                    <p className="text-[8px] tracking-[0.25em]" style={{ color: '#38bdf8' }}>SAR / RADAR</p>
-                  </div>
-                  <ReadoutRow label="PLATFORM" value={sar.platform ?? '—'} accent="#38bdf8" />
-                  <ReadoutRow label="ORBIT" value={sar.orbit ?? '—'} sub={sar.acquired?.slice(0, 10)} />
-                </div>
-              )}
-
-              {/* Thermal */}
-              {thermal?.status === 'found' && (
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <Thermometer size={9} style={{ color: '#f87171' }} />
-                    <p className="text-[8px] tracking-[0.25em]" style={{ color: '#f87171' }}>THERMAL</p>
-                  </div>
-                  <ReadoutRow
-                    label="LST"
-                    value={thermal.value !== null ? `${thermal.value}°C` : 'scene confirmed'}
-                    sub={thermal.acquired?.slice(0, 10) + ' · 30m'}
-                    accent="#f87171"
-                  />
-                </div>
-              )}
-
-              {/* Quality */}
-              <div className="border-t border-[#1a2a1e] pt-3">
-                <p className="text-[#2a3a2e] text-[8px] tracking-[0.25em] mb-2">DATA QUALITY</p>
-                <div className="flex gap-1 mb-2">
-                  <div className="flex-1">
-                    <div className="h-1 bg-[#1a2a1e] rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-[#5b7c6f] rounded-full transition-all"
-                        style={{ width: `${intel.coverage_quality * 100}%` }}
-                      />
-                    </div>
-                    <p className="text-[#2a3a2e] text-[7px] mt-1">COVERAGE {Math.round(intel.coverage_quality * 100)}%</p>
-                  </div>
-                  <div className="flex-1">
-                    <div className="h-1 bg-[#1a2a1e] rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-[#D4AF37] rounded-full transition-all"
-                        style={{ width: `${intel.measurement_quality * 100}%` }}
-                      />
-                    </div>
-                    <p className="text-[#2a3a2e] text-[7px] mt-1">PIXEL {Math.round(intel.measurement_quality * 100)}%</p>
-                  </div>
-                </div>
-                {intel.note && (
-                  <p className="text-[#2a3a2e] text-[8px] leading-relaxed border-l border-[#1a2a1e] pl-2">
-                    {intel.note}
-                  </p>
-                )}
-              </div>
-
-              {/* Source trace */}
-              {intel.source_trace.length > 0 && (
-                <div className="border-t border-[#1a2a1e] pt-3">
-                  <p className="text-[#2a3a2e] text-[8px] tracking-[0.25em] mb-2">SOURCE TRACE</p>
-                  {intel.source_trace.map((s, i) => (
-                    <p key={i} className="text-[#2a3a2e] text-[8px] leading-relaxed border-l border-[#1a2a1e] pl-2 mb-1">
-                      {s}
-                    </p>
-                  ))}
-                </div>
-              )}
-
-              {/* Historical provenance — what old cartography is in play */}
-              {histActive.length > 0 && (
-                <div className="border-t border-[#1a2a1e] pt-3">
-                  <div className="flex items-center gap-2 mb-2">
-                    <History size={9} style={{ color: '#D4AF37' }} />
-                    <p className="text-[8px] tracking-[0.25em]" style={{ color: '#D4AF37' }}>HISTORICAL BASE</p>
-                  </div>
-                  {histActive.map(a => (
-                    <ReadoutRow
-                      key={a.map.id}
-                      label={String(a.map.year ?? '—')}
-                      value={a.map.title.length > 22 ? a.map.title.slice(0, 22) + '…' : a.map.title}
-                      sub={`${a.map.source} · ${a.map.license}`}
-                      accent={COMMERCIAL_OK.has(a.map.license) ? '#D4AF37' : '#fbbf24'}
-                    />
-                  ))}
-                </div>
-              )}
-
-              {/* Thumbnail */}
-              {s2meta?.thumbnail && (
-                <div className="border-t border-[#1a2a1e] pt-3">
-                  <p className="text-[#2a3a2e] text-[8px] tracking-[0.25em] mb-2">SENTINEL-2 PREVIEW</p>
-                  <img
-                    src={s2meta.thumbnail}
-                    alt="Sentinel-2 scene"
-                    className="w-full border border-[#1a2a1e]"
-                    style={{ imageRendering: 'pixelated' }}
-                  />
-                  <p className="text-[#2a3a2e] text-[7px] mt-1">{s2meta.date?.slice(0, 10)} · {s2meta.platform}</p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {!intel && !intelLoading && !intelError && (
-            <div className="p-4 md:p-6 text-center">
-              <Zap size={20} className="text-[#1a2a1e] mx-auto mb-3" />
-              <p className="text-[#2a3a2e] text-[9px] tracking-widest">CLICK MAP TO ANALYZE</p>
-            </div>
-          )}
+            </button>
+          ))}
         </div>
 
-        {/* Terrain Scan Results */}
-        {(scan || scanLoading) && (
-          <div className="border-t border-[#1a2a1e] p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Atom size={9} style={{ color: '#a78bfa' }} />
-              <p className="text-[8px] tracking-[0.25em]" style={{ color: '#a78bfa' }}>TERRAIN SCAN</p>
-              {scanLoading && <span className="text-[#2a3a2e] text-[8px] animate-pulse ml-auto">SCANNING...</span>}
-            </div>
-            {scan && !scanLoading && (
-              <>
-                <div className="flex gap-3 mb-3">
-                  <div>
-                    <p className="text-[#c8c4ba] text-[11px]">{scan.candidates.length}</p>
-                    <p className="text-[#2a3a2e] text-[7px] tracking-widest">ANOMALIES</p>
-                  </div>
-                  <div>
-                    <p className="text-[#c8c4ba] text-[11px]">{scan.grid?.sampled_count ?? '—'}</p>
-                    <p className="text-[#2a3a2e] text-[7px] tracking-widest">SAMPLES</p>
-                  </div>
-                  <div>
-                    <p className="text-[#c8c4ba] text-[11px]">{scan.terrain?.mean_elevation_m ?? '—'}m</p>
-                    <p className="text-[#2a3a2e] text-[7px] tracking-widest">MEAN ELEV</p>
-                  </div>
+        <div className="flex-1 overflow-y-auto">
+
+          {/* ── INTEL TAB ─────────────────────────────────────────── */}
+          {panelTab === 'intel' && (
+            <>
+              {intelLoading && (
+                <div className="p-4 md:p-6 flex flex-col items-center gap-3">
+                  <div className="w-8 h-8 border border-[#1a2a1e] border-t-[#5b7c6f] rounded-full animate-spin" />
+                  <p className="text-[#2a3a2e] text-[9px] tracking-widest">QUERYING SATELLITES</p>
                 </div>
-                <div className="mb-3 space-y-1">
-                  <ReadoutRow label="STD" value={`±${scan.terrain?.std_elevation_m ?? '—'}m`} />
-                  <ReadoutRow label="THRESHOLD" value={`${scan.terrain?.threshold_m ?? '—'}m`} accent="#a78bfa" />
-                  <ReadoutRow label="ELEVATED PTS" value={`${scan.terrain?.elevated_point_count ?? '—'}`} />
-                  <ReadoutRow label="DEM SOURCE" value={scan.terrain?.source ?? '—'} />
-                </div>
+              )}
 
-                {scan.spectral?.valid && (
-                  <div className="border-t border-[#1a2a1e] pt-2 mb-3">
-                    <p className="text-[#2a3a2e] text-[7px] tracking-[0.25em] mb-1">S2 SPECTRAL</p>
-                    <ReadoutRow label="NDVI MEAN" value={scan.spectral.ndvi_mean?.toFixed(3) ?? '—'}
-                      accent={scan.spectral.ndvi_mean < 0.2 ? '#f87171' : scan.spectral.ndvi_mean < 0.4 ? '#fbbf24' : '#4ade80'} />
-                    <ReadoutRow label="NDVI STD" value={`±${scan.spectral.ndvi_std?.toFixed(3) ?? '—'}`} />
-                    <ReadoutRow label="CLOUD" value={`${scan.spectral.cloud_cover?.toFixed(1) ?? '—'}%`} sub={scan.spectral.date} />
-                    <ReadoutRow label="PIXELS" value={scan.spectral.pixel_count?.toLocaleString() ?? '—'} />
-                  </div>
-                )}
-
-                {scan.muon_baseline?.valid && (
-                  <div className="border-t border-[#1a2a1e] pt-2 mb-3">
-                    <p className="text-[#2a3a2e] text-[7px] tracking-[0.25em] mb-1">MUON BASELINE</p>
-                    <ReadoutRow label="FLUX" value={`${scan.muon_baseline.flux_m2_min?.toFixed(0) ?? '—'}/m²/min`} accent="#a78bfa" />
-                    <ReadoutRow label="VOID THRESH" value={`${scan.muon_baseline.void_threshold_m2_min?.toFixed(0) ?? '—'}/m²/min`} />
-                    <ReadoutRow label="Kp INDEX" value={`${scan.muon_baseline.kp_index ?? '—'}`}
-                      accent={scan.muon_baseline.kp_index > 5 ? '#f87171' : scan.muon_baseline.kp_index > 3 ? '#fbbf24' : '#5b7c6f'} />
-                    <ReadoutRow label="RIGIDITY" value={`${scan.muon_baseline.cutoff_rigidity_gv ?? '—'} GV`} />
-                    <ReadoutRow label="MODEL" value={scan.muon_baseline.model ?? '—'} />
-                  </div>
-                )}
-
-                {scan.candidates.length === 0 && (
-                  <p className="text-[#2a3a2e] text-[8px]">No anomalies detected</p>
-                )}
-                {scan.candidates.slice(0, 8).map((c) => {
-                  const color = c.score > 0.7 ? '#f87171' : c.score > 0.4 ? '#fbbf24' : '#5b7c6f'
-                  return (
-                    <div key={c.id} className="border-b border-[#1a2a1e] py-2 last:border-0">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-[9px] font-mono font-medium" style={{ color }}>{c.id}</span>
-                        <span className="text-[10px] font-mono" style={{ color }}>{c.score.toFixed(2)}</span>
-                      </div>
-                      <div className="flex gap-2 mb-1">
-                        <div className="flex-1 h-0.5 rounded-full bg-[#1a2a1e] overflow-hidden">
-                          <div className="h-full bg-[#fb923c] rounded-full" style={{ width: `${(c.terrain_score ?? 0) * 100}%` }} />
-                        </div>
-                        <div className="flex-1 h-0.5 rounded-full bg-[#1a2a1e] overflow-hidden">
-                          <div className="h-full bg-[#4ade80] rounded-full" style={{ width: `${(c.ndvi_signal ?? 0.5) * 100}%` }} />
-                        </div>
-                        <div className="flex-1 h-0.5 rounded-full bg-[#1a2a1e] overflow-hidden">
-                          <div className="h-full bg-[#a78bfa] rounded-full" style={{ width: `${(c.sar_signal ?? 0.5) * 100}%` }} />
-                        </div>
-                      </div>
-                      <div className="flex gap-1 mb-1">
-                        <span className="text-[6px] text-[#fb923c] flex-1">DEM</span>
-                        <span className="text-[6px] text-[#4ade80] flex-1">NDVI</span>
-                        <span className="text-[6px] text-[#a78bfa] flex-1">SAR</span>
-                      </div>
-                      <p className="text-[#2a3a2e] text-[7px]">
-                        ⌀{Math.round(c.diameter_m)}m · +{c.height_above_mean_m}m · {c.confidence}
+              {intelError && !intelLoading && (
+                <div className="p-5">
+                  <div className="border border-[#f87171]/20 px-4 py-3 flex items-start gap-2">
+                    <AlertCircle size={11} className="text-[#f87171] flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-[#f87171] text-[9px] tracking-widest mb-1">ENGINE OFFLINE</p>
+                      <p className="text-[#3a4a3e] text-[8px] leading-relaxed">
+                        Lithic Engine timed out. Railway may be cold-starting — try Refresh Intel.
                       </p>
-                      {c.muon_detail && c.muon_detail !== 'awaiting_detector' && (
-                        <p className="text-[#2a3a2e] text-[7px] mt-0.5">μ {c.muon_detail.split(' ')[0]}</p>
-                      )}
-                      {c.sensors && (
-                        <div className="flex gap-1 mt-1 flex-wrap">
-                          {c.sensors.map((s: string) => (
-                            <span key={s} className="text-[6px] px-1 py-0.5 border border-[#1a2a1e] text-[#2a3a2e]">{s}</span>
-                          ))}
-                        </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {intel && !intelLoading && (
+                <div className="p-4 space-y-4">
+                  {/* Location */}
+                  <div>
+                    <p className="text-[#2a3a2e] text-[8px] tracking-[0.25em] mb-2">COORDINATES</p>
+                    <ReadoutRow label="LAT" value={`${intel.location.lat}°`} />
+                    <ReadoutRow label="LNG" value={`${intel.location.lng}°`} />
+                  </div>
+
+                  {/* Elevation */}
+                  {elev?.status === 'found' && (
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <Mountain size={9} style={{ color: '#fb923c' }} />
+                        <p className="text-[8px] tracking-[0.25em]" style={{ color: '#fb923c' }}>ELEVATION</p>
+                      </div>
+                      <ReadoutRow
+                        label="ALT"
+                        value={`${elev.value}m`}
+                        sub={`${elev.source} · ${elev.resolution_m}m res`}
+                        accent="#fb923c"
+                      />
+                    </div>
+                  )}
+
+                  {/* NDVI */}
+                  {ndvi?.status === 'found' && (
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <Eye size={9} style={{ color: '#4ade80' }} />
+                        <p className="text-[8px] tracking-[0.25em]" style={{ color: '#4ade80' }}>VEGETATION</p>
+                      </div>
+                      <ReadoutRow
+                        label="NDVI"
+                        value={ndvi.value !== null ? ndvi.value.toString() : '—'}
+                        sub={ndvi.method === 'pixel_sample_B08_B04' ? '10m pixel · B08/B04' : 'scene estimate'}
+                        accent={ndvi.value !== null ? (ndvi.value > 0.5 ? '#4ade80' : ndvi.value > 0.2 ? '#fbbf24' : '#f87171') : '#3a4a3e'}
+                      />
+                      {s2meta?.cloud_cover !== undefined && (
+                        <ReadoutRow
+                          label="CLOUD"
+                          value={`${s2meta.cloud_cover.toFixed(1)}%`}
+                          sub={s2meta.date?.slice(0, 10)}
+                        />
                       )}
                     </div>
-                  )
-                })}
-              </>
-            )}
-          </div>
-        )}
+                  )}
 
-        {/* AOI Manager */}
-        <div className="border-t border-[#1a2a1e] p-3 space-y-2">
-          <div className="text-[#5b7c6f] text-[8px] tracking-[0.25em]">AOI MANAGER</div>
+                  {/* SAR */}
+                  {sar?.status === 'found' && (
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <Radio size={9} style={{ color: '#38bdf8' }} />
+                        <p className="text-[8px] tracking-[0.25em]" style={{ color: '#38bdf8' }}>SAR / RADAR</p>
+                      </div>
+                      <ReadoutRow label="PLATFORM" value={sar.platform ?? '—'} accent="#38bdf8" />
+                      <ReadoutRow label="ORBIT" value={sar.orbit ?? '—'} sub={sar.acquired?.slice(0, 10)} />
+                    </div>
+                  )}
 
-          <div className="grid grid-cols-3 gap-1">
-            {(['pin', 'rectangle', 'polygon'] as AOIMode[]).map((mode) => (
+                  {/* Thermal */}
+                  {thermal?.status === 'found' && (
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <Thermometer size={9} style={{ color: '#f87171' }} />
+                        <p className="text-[8px] tracking-[0.25em]" style={{ color: '#f87171' }}>THERMAL</p>
+                      </div>
+                      <ReadoutRow
+                        label="LST"
+                        value={thermal.value !== null ? `${thermal.value}°C` : 'scene confirmed'}
+                        sub={thermal.acquired?.slice(0, 10) + ' · 30m'}
+                        accent="#f87171"
+                      />
+                    </div>
+                  )}
+
+                  {/* Quality */}
+                  <div className="border-t border-[#1a2a1e] pt-3">
+                    <p className="text-[#2a3a2e] text-[8px] tracking-[0.25em] mb-2">DATA QUALITY</p>
+                    <div className="flex gap-1 mb-2">
+                      <div className="flex-1">
+                        <div className="h-1 bg-[#1a2a1e] rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-[#5b7c6f] rounded-full transition-all"
+                            style={{ width: `${intel.coverage_quality * 100}%` }}
+                          />
+                        </div>
+                        <p className="text-[#2a3a2e] text-[7px] mt-1">COVERAGE {Math.round(intel.coverage_quality * 100)}%</p>
+                      </div>
+                      <div className="flex-1">
+                        <div className="h-1 bg-[#1a2a1e] rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-[#D4AF37] rounded-full transition-all"
+                            style={{ width: `${intel.measurement_quality * 100}%` }}
+                          />
+                        </div>
+                        <p className="text-[#2a3a2e] text-[7px] mt-1">PIXEL {Math.round(intel.measurement_quality * 100)}%</p>
+                      </div>
+                    </div>
+                    {intel.note && (
+                      <p className="text-[#2a3a2e] text-[8px] leading-relaxed border-l border-[#1a2a1e] pl-2">
+                        {intel.note}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Source trace */}
+                  {intel.source_trace.length > 0 && (
+                    <div className="border-t border-[#1a2a1e] pt-3">
+                      <p className="text-[#2a3a2e] text-[8px] tracking-[0.25em] mb-2">SOURCE TRACE</p>
+                      {intel.source_trace.map((s, i) => (
+                        <p key={i} className="text-[#2a3a2e] text-[8px] leading-relaxed border-l border-[#1a2a1e] pl-2 mb-1">
+                          {s}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Historical provenance — what old cartography is in play */}
+                  {histActive.length > 0 && (
+                    <div className="border-t border-[#1a2a1e] pt-3">
+                      <div className="flex items-center gap-2 mb-2">
+                        <History size={9} style={{ color: '#D4AF37' }} />
+                        <p className="text-[8px] tracking-[0.25em]" style={{ color: '#D4AF37' }}>HISTORICAL BASE</p>
+                      </div>
+                      {histActive.map(a => (
+                        <ReadoutRow
+                          key={a.map.id}
+                          label={String(a.map.year ?? '—')}
+                          value={a.map.title.length > 22 ? a.map.title.slice(0, 22) + '…' : a.map.title}
+                          sub={`${a.map.source} · ${a.map.license}`}
+                          accent={COMMERCIAL_OK.has(a.map.license) ? '#D4AF37' : '#fbbf24'}
+                        />
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Thumbnail */}
+                  {s2meta?.thumbnail && (
+                    <div className="border-t border-[#1a2a1e] pt-3">
+                      <p className="text-[#2a3a2e] text-[8px] tracking-[0.25em] mb-2">SENTINEL-2 PREVIEW</p>
+                      <img
+                        src={s2meta.thumbnail}
+                        alt="Sentinel-2 scene"
+                        className="w-full border border-[#1a2a1e]"
+                        style={{ imageRendering: 'pixelated' }}
+                      />
+                      <p className="text-[#2a3a2e] text-[7px] mt-1">{s2meta.date?.slice(0, 10)} · {s2meta.platform}</p>
+                    </div>
+                  )}
+
+                  <button
+                    onClick={() => fetchIntel(coords.lat, coords.lng)}
+                    disabled={intelLoading}
+                    className="w-full py-2 border border-[#1a2a1e] hover:border-[#5b7c6f] text-[#5b7c6f] text-[9px] tracking-[0.2em] transition-colors disabled:opacity-40"
+                  >
+                    ↻ REFRESH INTEL
+                  </button>
+                </div>
+              )}
+
+              {!intel && !intelLoading && !intelError && (
+                <div className="p-4 md:p-6 text-center">
+                  <Zap size={20} className="text-[#1a2a1e] mx-auto mb-3" />
+                  <p className="text-[#2a3a2e] text-[9px] tracking-widest">CLICK MAP TO ANALYZE</p>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ── SCAN TAB ──────────────────────────────────────────── */}
+          {panelTab === 'scan' && (
+            <div className="p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Atom size={9} style={{ color: '#a78bfa' }} />
+                <p className="text-[8px] tracking-[0.25em]" style={{ color: '#a78bfa' }}>TERRAIN SCAN</p>
+                {scanLoading && <span className="text-[#2a3a2e] text-[8px] animate-pulse ml-auto">SCANNING…</span>}
+              </div>
+
+              {!scan && !scanLoading && (
+                <p className="text-[#2a3a2e] text-[9px] tracking-widest text-center py-6">
+                  CLICK MAP TO SCAN
+                </p>
+              )}
+
+              {scan && !scanLoading && (
+                <>
+                  <button
+                    onClick={() => setWebglOverlay(v => !v)}
+                    className={`w-full py-2 mb-3 border text-[8px] tracking-[0.15em] transition-colors ${
+                      webglOverlay
+                        ? 'border-[#ef4444] text-[#ef4444]'
+                        : 'border-[#1a2a1e] text-[#5b7c6f] hover:border-[#5b7c6f]'
+                    }`}
+                  >
+                    {webglOverlay ? 'HIDE ANOMALY HEATMAP' : 'SHOW ANOMALY HEATMAP'}
+                  </button>
+
+                  <div className="flex gap-3 mb-3">
+                    <div>
+                      <p className="text-[#c8c4ba] text-[11px]">{scan.candidates.length}</p>
+                      <p className="text-[#2a3a2e] text-[7px] tracking-widest">ANOMALIES</p>
+                    </div>
+                    <div>
+                      <p className="text-[#c8c4ba] text-[11px]">{scan.grid?.sampled_count ?? '—'}</p>
+                      <p className="text-[#2a3a2e] text-[7px] tracking-widest">SAMPLES</p>
+                    </div>
+                    <div>
+                      <p className="text-[#c8c4ba] text-[11px]">{scan.terrain?.mean_elevation_m ?? '—'}m</p>
+                      <p className="text-[#2a3a2e] text-[7px] tracking-widest">MEAN ELEV</p>
+                    </div>
+                  </div>
+                  <div className="mb-3 space-y-1">
+                    <ReadoutRow label="STD" value={`±${scan.terrain?.std_elevation_m ?? '—'}m`} />
+                    <ReadoutRow label="THRESHOLD" value={`${scan.terrain?.threshold_m ?? '—'}m`} accent="#a78bfa" />
+                    <ReadoutRow label="ELEVATED PTS" value={`${scan.terrain?.elevated_point_count ?? '—'}`} />
+                    <ReadoutRow label="DEM SOURCE" value={scan.terrain?.source ?? '—'} />
+                  </div>
+
+                  {scan.spectral?.valid && (
+                    <div className="border-t border-[#1a2a1e] pt-2 mb-3">
+                      <p className="text-[#2a3a2e] text-[7px] tracking-[0.25em] mb-1">S2 SPECTRAL</p>
+                      <ReadoutRow label="NDVI MEAN" value={scan.spectral.ndvi_mean?.toFixed(3) ?? '—'}
+                        accent={scan.spectral.ndvi_mean < 0.2 ? '#f87171' : scan.spectral.ndvi_mean < 0.4 ? '#fbbf24' : '#4ade80'} />
+                      <ReadoutRow label="NDVI STD" value={`±${scan.spectral.ndvi_std?.toFixed(3) ?? '—'}`} />
+                      <ReadoutRow label="CLOUD" value={`${scan.spectral.cloud_cover?.toFixed(1) ?? '—'}%`} sub={scan.spectral.date} />
+                      <ReadoutRow label="PIXELS" value={scan.spectral.pixel_count?.toLocaleString() ?? '—'} />
+                    </div>
+                  )}
+
+                  {scan.muon_baseline?.valid && (
+                    <div className="border-t border-[#1a2a1e] pt-2 mb-3">
+                      <p className="text-[#2a3a2e] text-[7px] tracking-[0.25em] mb-1">MUON BASELINE</p>
+                      <ReadoutRow label="FLUX" value={`${scan.muon_baseline.flux_m2_min?.toFixed(0) ?? '—'}/m²/min`} accent="#a78bfa" />
+                      <ReadoutRow label="VOID THRESH" value={`${scan.muon_baseline.void_threshold_m2_min?.toFixed(0) ?? '—'}/m²/min`} />
+                      <ReadoutRow label="Kp INDEX" value={`${scan.muon_baseline.kp_index ?? '—'}`}
+                        accent={scan.muon_baseline.kp_index > 5 ? '#f87171' : scan.muon_baseline.kp_index > 3 ? '#fbbf24' : '#5b7c6f'} />
+                      <ReadoutRow label="RIGIDITY" value={`${scan.muon_baseline.cutoff_rigidity_gv ?? '—'} GV`} />
+                      <ReadoutRow label="MODEL" value={scan.muon_baseline.model ?? '—'} />
+                    </div>
+                  )}
+
+                  {scan.candidates.length === 0 && (
+                    <p className="text-[#2a3a2e] text-[8px]">No anomalies detected</p>
+                  )}
+                  {scan.candidates.slice(0, 8).map((c) => {
+                    const color = c.score > 0.7 ? '#f87171' : c.score > 0.4 ? '#fbbf24' : '#5b7c6f'
+                    return (
+                      <div key={c.id} className="border-b border-[#1a2a1e] py-2 last:border-0">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[9px] font-mono font-medium" style={{ color }}>{c.id}</span>
+                          <span className="text-[10px] font-mono" style={{ color }}>{c.score.toFixed(2)}</span>
+                        </div>
+                        <div className="flex gap-2 mb-1">
+                          <div className="flex-1 h-0.5 rounded-full bg-[#1a2a1e] overflow-hidden">
+                            <div className="h-full bg-[#fb923c] rounded-full" style={{ width: `${(c.terrain_score ?? 0) * 100}%` }} />
+                          </div>
+                          <div className="flex-1 h-0.5 rounded-full bg-[#1a2a1e] overflow-hidden">
+                            <div className="h-full bg-[#4ade80] rounded-full" style={{ width: `${(c.ndvi_signal ?? 0.5) * 100}%` }} />
+                          </div>
+                          <div className="flex-1 h-0.5 rounded-full bg-[#1a2a1e] overflow-hidden">
+                            <div className="h-full bg-[#a78bfa] rounded-full" style={{ width: `${(c.sar_signal ?? 0.5) * 100}%` }} />
+                          </div>
+                        </div>
+                        <div className="flex gap-1 mb-1">
+                          <span className="text-[6px] text-[#fb923c] flex-1">DEM</span>
+                          <span className="text-[6px] text-[#4ade80] flex-1">NDVI</span>
+                          <span className="text-[6px] text-[#a78bfa] flex-1">SAR</span>
+                        </div>
+                        <p className="text-[#2a3a2e] text-[7px]">
+                          ⌀{Math.round(c.diameter_m)}m · +{c.height_above_mean_m}m · {c.confidence}
+                        </p>
+                        {c.muon_detail && c.muon_detail !== 'awaiting_detector' && (
+                          <p className="text-[#2a3a2e] text-[7px] mt-0.5">μ {c.muon_detail.split(' ')[0]}</p>
+                        )}
+                        {c.sensors && (
+                          <div className="flex gap-1 mt-1 flex-wrap">
+                            {c.sensors.map((s: string) => (
+                              <span key={s} className="text-[6px] px-1 py-0.5 border border-[#1a2a1e] text-[#2a3a2e]">{s}</span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </>
+              )}
+            </div>
+          )}
+
+          {/* ── TOOLS TAB ─────────────────────────────────────────── */}
+          {panelTab === 'tools' && (
+            <div className="p-3 space-y-3">
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <Wrench size={9} className="text-[#5b7c6f]" />
+                  <p className="text-[#5b7c6f] text-[8px] tracking-[0.25em]">AOI MANAGER</p>
+                </div>
+
+                <div className="grid grid-cols-3 gap-1">
+                  {(['pin', 'rectangle', 'polygon'] as AOIMode[]).map((mode) => (
+                    <button
+                      key={mode}
+                      onClick={() => setAOIModeSafe(mode)}
+                      className={`py-1 border text-[7px] tracking-[0.16em] uppercase transition-colors ${
+                        aoiMode === mode
+                          ? 'border-[#D4AF37]/60 text-[#D4AF37]'
+                          : 'border-[#1a2a1e] text-[#5b7c6f] hover:border-[#5b7c6f]'
+                      }`}
+                    >
+                      {mode}
+                    </button>
+                  ))}
+                </div>
+
+                <p className="text-[#2a3a2e] text-[7px] leading-relaxed mt-1.5">
+                  {aoiMode === 'pin' && 'Click map to drop AOI pin.'}
+                  {aoiMode === 'rectangle' && 'Click two corners to draw AOI rectangle.'}
+                  {aoiMode === 'polygon' && 'Click vertices, double-click to finish polygon.'}
+                </p>
+              </div>
+
               <button
-                key={mode}
-                onClick={() => setAOIModeSafe(mode)}
-                className={`py-1 border text-[7px] tracking-[0.16em] uppercase transition-colors ${
-                  aoiMode === mode
-                    ? 'border-[#D4AF37]/60 text-[#D4AF37]'
+                onClick={() => { setTerrainMode(v => !v); terrainStartRef.current = null }}
+                className={`w-full py-2 border text-[8px] tracking-[0.15em] transition-colors ${
+                  terrainMode
+                    ? 'border-[#fb923c] text-[#fb923c]'
                     : 'border-[#1a2a1e] text-[#5b7c6f] hover:border-[#5b7c6f]'
                 }`}
               >
-                {mode}
+                {terrainMode ? 'TERRAIN PROFILE ACTIVE — CLICK 2 POINTS' : 'TERRAIN PROFILE'}
               </button>
-            ))}
-          </div>
 
-          <p className="text-[#2a3a2e] text-[7px] leading-relaxed">
-            {aoiMode === 'pin' && 'Click map to drop AOI pin.'}
-            {aoiMode === 'rectangle' && 'Click two corners to draw AOI rectangle.'}
-            {aoiMode === 'polygon' && 'Click vertices, double-click to finish polygon.'}
-          </p>
-
-          <button
-            onClick={() => setWebglOverlay(v => !v)}
-            className={`w-full py-2 border text-[8px] tracking-[0.15em] transition-colors ${
-              webglOverlay
-                ? 'border-[#ef4444] text-[#ef4444]'
-                : 'border-[#1a2a1e] text-[#5b7c6f] hover:border-[#5b7c6f]'
-            }`}
-          >
-            {webglOverlay ? 'ANOMALY HEATMAP ACTIVE' : 'ANOMALY HEATMAP'}
-          </button>
-
-          <button
-            onClick={() => { setTerrainMode(v => !v); terrainStartRef.current = null }}
-            className={`w-full py-2 border text-[8px] tracking-[0.15em] transition-colors ${
-              terrainMode
-                ? 'border-[#fb923c] text-[#fb923c]'
-                : 'border-[#1a2a1e] text-[#5b7c6f] hover:border-[#5b7c6f]'
-            }`}
-          >
-            {terrainMode ? 'TERRAIN PROFILE ACTIVE — CLICK 2 POINTS' : 'TERRAIN PROFILE'}
-          </button>
-
-          <div className="grid grid-cols-2 gap-1">
-            <button onClick={saveAOI} disabled={!aoiGeometry || aoiSaveStatus === 'saving'} className="py-2 border border-[#1a2a1e] hover:border-[#5b7c6f] text-[#5b7c6f] text-[8px] tracking-[0.15em] disabled:opacity-40">
-              {aoiSaveStatus === 'saving' ? 'SAVING' : aoiSaveStatus === 'saved' ? 'SAVED' : aoiSaveStatus === 'error' ? 'FAILED' : 'SAVE'}
-            </button>
-            <button onClick={exportGeoJSON} className="py-2 border border-[#1a2a1e] hover:border-[#5b7c6f] text-[#5b7c6f] text-[8px] tracking-[0.15em]">
-              EXPORT
-            </button>
-            <button onClick={() => geojsonImportRef.current?.click()} className="py-2 border border-[#1a2a1e] hover:border-[#5b7c6f] text-[#5b7c6f] text-[8px] tracking-[0.15em]">
-              IMPORT
-            </button>
-            <button onClick={copyShareURL} className="py-2 border border-[#1a2a1e] hover:border-[#5b7c6f] text-[#5b7c6f] text-[8px] tracking-[0.15em]">
-              {shareCopied ? 'COPIED' : 'SHARE'}
-            </button>
-          </div>
-
-          <input
-            ref={geojsonImportRef}
-            type="file"
-            accept=".geojson,.json,application/geo+json,application/json"
-            className="hidden"
-            onChange={async (e) => {
-              const file = e.target.files?.[0]
-              if (!file) return
-              try { await importGeoJSON(file) } catch (err) { console.error('GeoJSON import failed', err) }
-              e.target.value = ''
-            }}
-          />
-
-          {(savedAOIs.length > 0 || aoiHistory.length > 0) && (
-            <div className="pt-2 border-t border-[#111a14] space-y-2">
-              <div>
-                <p className="text-[#2a3a2e] text-[7px] tracking-[0.2em] mb-1">SAVED AOIS</p>
-                {(savedAOIs.length ? savedAOIs : aoiHistory).slice(0, 4).map((item) => (
-                  <button
-                    key={item.id}
-                    onClick={() => applyAOI(item.geometry, { lat: item.lat, lng: item.lng })}
-                    className="w-full text-left border border-[#111a14] hover:border-[#5b7c6f]/40 px-2 py-1 mb-1 transition-colors"
-                  >
-                    <p className="text-[#5b7c6f] text-[7px] truncate">{item.name}</p>
-                    <p className="text-[#2a3a2e] text-[6px]">{new Date(item.created_at).toLocaleDateString()} · z{item.zoom}</p>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Temporal Comparison */}
-        <div className="border-t border-[#1a2a1e] p-3 space-y-3">
-          <div className="flex items-center justify-between">
-            <p className="text-[#5b7c6f] text-[8px] tracking-[0.25em]">
-              TEMPORAL ANALYSIS
-            </p>
-
-            <button
-              onClick={() => setTemporalMode(v => !v)}
-              className={`px-2 py-1 border text-[7px] tracking-[0.15em] transition-colors ${
-                temporalMode
-                  ? 'border-[#38bdf8] text-[#38bdf8]'
-                  : 'border-[#1a2a1e] text-[#5b7c6f]'
-              }`}
-            >
-              {temporalMode ? 'ACTIVE' : 'ENABLE'}
-            </button>
-          </div>
-
-          {temporalMode && (
-            <>
-              <div className="space-y-2">
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={timeSlider}
-                  onChange={(e) => setTimeSlider(Number(e.target.value))}
-                  className="w-full"
-                />
-
-                <div className="flex justify-between text-[6px] text-[#2a3a2e]">
-                  <span>{temporalScenes[0].date}</span>
-                  <span>{temporalScenes[1].date}</span>
-                  <span>{temporalScenes[2].date}</span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-1">
-                {temporalScenes.map((scene) => (
-                  <div key={scene.label} className="border border-[#111a14] p-2">
-                    <p className="text-[#5b7c6f] text-[7px]">{scene.label}</p>
-                    <p className="text-[#c8c4ba] text-[8px] mt-1">{scene.date}</p>
-                    <p className="text-[#4ade80] text-[8px] mt-1">
-                      NDVI {scene.ndvi.toFixed(2)}
+              {terrainProfile.length > 0 && (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-[#fb923c] text-[8px] tracking-[0.25em]">
+                      TERRAIN PROFILE
                     </p>
                     <p className="text-[#2a3a2e] text-[7px]">
-                      Cloud {scene.cloud}%
+                      {terrainProfile.length} samples
                     </p>
                   </div>
-                ))}
+
+                  <svg
+                    viewBox="0 0 240 80"
+                    className="w-full h-24 border border-[#111a14] bg-[#09100b]"
+                  >
+                    <polyline
+                      fill="none"
+                      stroke="#fb923c"
+                      strokeWidth="2"
+                      points={
+                        terrainProfile.map((p, i) => {
+                          const x = (i / Math.max(terrainProfile.length - 1, 1)) * 240
+                          const minElev = Math.min(...terrainProfile.map(t => t.elevation))
+                          const maxElev = Math.max(...terrainProfile.map(t => t.elevation))
+                          const y =
+                            70 -
+                            ((p.elevation - minElev) /
+                              Math.max(maxElev - minElev, 1)) *
+                              60
+                          return `${x},${y}`
+                        }).join(' ')
+                      }
+                    />
+
+                    {scan?.candidates?.slice(0, 5).map((c, i) => {
+                      const x = ((i + 1) / 6) * 240
+                      return (
+                        <circle
+                          key={c.id}
+                          cx={x}
+                          cy="40"
+                          r="3"
+                          fill="#ef4444"
+                        />
+                      )
+                    })}
+                  </svg>
+
+                  <div className="grid grid-cols-3 gap-1 mt-2">
+                    <div className="border border-[#111a14] p-2">
+                      <p className="text-[#2a3a2e] text-[6px]">MIN</p>
+                      <p className="text-[#c8c4ba] text-[9px]">
+                        {Math.min(...terrainProfile.map(p => p.elevation)).toFixed(1)}m
+                      </p>
+                    </div>
+
+                    <div className="border border-[#111a14] p-2">
+                      <p className="text-[#2a3a2e] text-[6px]">MAX</p>
+                      <p className="text-[#c8c4ba] text-[9px]">
+                        {Math.max(...terrainProfile.map(p => p.elevation)).toFixed(1)}m
+                      </p>
+                    </div>
+
+                    <div className="border border-[#111a14] p-2">
+                      <p className="text-[#2a3a2e] text-[6px]">RELIEF</p>
+                      <p className="text-[#c8c4ba] text-[9px]">
+                        {(
+                          Math.max(...terrainProfile.map(p => p.elevation)) -
+                          Math.min(...terrainProfile.map(p => p.elevation))
+                        ).toFixed(1)}m
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-1">
+                <button onClick={saveAOI} disabled={!aoiGeometry || aoiSaveStatus === 'saving'} className="py-2 border border-[#1a2a1e] hover:border-[#5b7c6f] text-[#5b7c6f] text-[8px] tracking-[0.15em] disabled:opacity-40">
+                  {aoiSaveStatus === 'saving' ? 'SAVING' : aoiSaveStatus === 'saved' ? 'SAVED' : aoiSaveStatus === 'error' ? 'FAILED' : 'SAVE'}
+                </button>
+                <button onClick={exportGeoJSON} className="py-2 border border-[#1a2a1e] hover:border-[#5b7c6f] text-[#5b7c6f] text-[8px] tracking-[0.15em]">
+                  EXPORT
+                </button>
+                <button onClick={() => geojsonImportRef.current?.click()} className="py-2 border border-[#1a2a1e] hover:border-[#5b7c6f] text-[#5b7c6f] text-[8px] tracking-[0.15em]">
+                  IMPORT
+                </button>
+                <button onClick={copyShareURL} className="py-2 border border-[#1a2a1e] hover:border-[#5b7c6f] text-[#5b7c6f] text-[8px] tracking-[0.15em]">
+                  {shareCopied ? 'COPIED' : 'SHARE'}
+                </button>
               </div>
 
-              <div className="border border-[#111a14] p-3 bg-[#09100b]">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-[#2a3a2e] text-[7px] tracking-[0.2em]">
-                    VEGETATION DELTA
-                  </p>
+              <input
+                ref={geojsonImportRef}
+                type="file"
+                accept=".geojson,.json,application/geo+json,application/json"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  try { await importGeoJSON(file) } catch (err) { console.error('GeoJSON import failed', err) }
+                  e.target.value = ''
+                }}
+              />
 
-                  <span className={`text-[8px] ${
-                    ndviDelta > 0 ? 'text-[#4ade80]' : 'text-[#f87171]'
-                  }`}>
-                    {ndviDelta > 0 ? '+' : ''}{ndviDelta.toFixed(2)}
-                  </span>
+              {(savedAOIs.length > 0 || aoiHistory.length > 0) && (
+                <div className="pt-2 border-t border-[#111a14]">
+                  <p className="text-[#2a3a2e] text-[7px] tracking-[0.2em] mb-1">SAVED AOIS</p>
+                  {(savedAOIs.length ? savedAOIs : aoiHistory).slice(0, 6).map((item) => (
+                    <button
+                      key={item.id}
+                      onClick={() => applyAOI(item.geometry, { lat: item.lat, lng: item.lng })}
+                      className="w-full text-left border border-[#111a14] hover:border-[#5b7c6f]/40 px-2 py-1 mb-1 transition-colors"
+                    >
+                      <p className="text-[#5b7c6f] text-[7px] truncate">{item.name}</p>
+                      <p className="text-[#2a3a2e] text-[6px]">{new Date(item.created_at).toLocaleDateString()} · z{item.zoom}</p>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── TIME TAB ──────────────────────────────────────────── */}
+          {panelTab === 'time' && (
+            <div className="p-3 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Clock size={9} className="text-[#5b7c6f]" />
+                  <p className="text-[#5b7c6f] text-[8px] tracking-[0.25em]">TEMPORAL ANALYSIS</p>
                 </div>
 
-                <div className="w-full h-2 bg-[#111a14] rounded-full overflow-hidden">
-                  <div
-                    className={`h-full ${
-                      ndviDelta > 0 ? 'bg-[#4ade80]' : 'bg-[#f87171]'
-                    }`}
-                    style={{
-                      width: `${Math.min(Math.abs(ndviDelta) * 100, 100)}%`
-                    }}
-                  />
-                </div>
+                <button
+                  onClick={() => setTemporalMode(v => !v)}
+                  className={`px-2 py-1 border text-[7px] tracking-[0.15em] transition-colors ${
+                    temporalMode
+                      ? 'border-[#38bdf8] text-[#38bdf8]'
+                      : 'border-[#1a2a1e] text-[#5b7c6f]'
+                  }`}
+                >
+                  {temporalMode ? 'ACTIVE' : 'ENABLE'}
+                </button>
+              </div>
 
-                <p className="text-[#2a3a2e] text-[7px] mt-2 leading-relaxed">
-                  {ndviDelta > 0
-                    ? 'Vegetation density increasing across AOI. Possible hydrological recovery or seasonal growth.'
-                    : 'Vegetation density decreasing across AOI. Potential excavation, drought stress, or surface disturbance.'}
+              {!temporalMode && (
+                <p className="text-[#2a3a2e] text-[8px] leading-relaxed">
+                  Compare vegetation across acquisition dates for the current AOI.
                 </p>
-              </div>
-            </>
+              )}
+
+              {temporalMode && (
+                <>
+                  <div className="space-y-2">
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={timeSlider}
+                      onChange={(e) => setTimeSlider(Number(e.target.value))}
+                      className="w-full"
+                    />
+
+                    <div className="flex justify-between text-[6px] text-[#2a3a2e]">
+                      <span>{temporalScenes[0].date}</span>
+                      <span>{temporalScenes[1].date}</span>
+                      <span>{temporalScenes[2].date}</span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-1">
+                    {temporalScenes.map((scene) => (
+                      <div key={scene.label} className="border border-[#111a14] p-2">
+                        <p className="text-[#5b7c6f] text-[7px]">{scene.label}</p>
+                        <p className="text-[#c8c4ba] text-[8px] mt-1">{scene.date}</p>
+                        <p className="text-[#4ade80] text-[8px] mt-1">
+                          NDVI {scene.ndvi.toFixed(2)}
+                        </p>
+                        <p className="text-[#2a3a2e] text-[7px]">
+                          Cloud {scene.cloud}%
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="border border-[#111a14] p-3 bg-[#09100b]">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-[#2a3a2e] text-[7px] tracking-[0.2em]">
+                        VEGETATION DELTA
+                      </p>
+
+                      <span className={`text-[8px] ${
+                        ndviDelta > 0 ? 'text-[#4ade80]' : 'text-[#f87171]'
+                      }`}>
+                        {ndviDelta > 0 ? '+' : ''}{ndviDelta.toFixed(2)}
+                      </span>
+                    </div>
+
+                    <div className="w-full h-2 bg-[#111a14] rounded-full overflow-hidden">
+                      <div
+                        className={`h-full ${
+                          ndviDelta > 0 ? 'bg-[#4ade80]' : 'bg-[#f87171]'
+                        }`}
+                        style={{
+                          width: `${Math.min(Math.abs(ndviDelta) * 100, 100)}%`
+                        }}
+                      />
+                    </div>
+
+                    <p className="text-[#2a3a2e] text-[7px] mt-2 leading-relaxed">
+                      {ndviDelta > 0
+                        ? 'Vegetation density increasing across AOI. Possible hydrological recovery or seasonal growth.'
+                        : 'Vegetation density decreasing across AOI. Potential excavation, drought stress, or surface disturbance.'}
+                    </p>
+                  </div>
+                </>
+              )}
+            </div>
           )}
         </div>
 
-        {terrainProfile.length > 0 && (
-          <div className="border-t border-[#1a2a1e] p-3">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-[#fb923c] text-[8px] tracking-[0.25em]">
-                TERRAIN PROFILE
-              </p>
-              <p className="text-[#2a3a2e] text-[7px]">
-                {terrainProfile.length} samples
-              </p>
-            </div>
-
-            <svg
-              viewBox="0 0 240 80"
-              className="w-full h-24 border border-[#111a14] bg-[#09100b]"
-            >
-              <polyline
-                fill="none"
-                stroke="#fb923c"
-                strokeWidth="2"
-                points={
-                  terrainProfile.map((p, i) => {
-                    const x = (i / Math.max(terrainProfile.length - 1, 1)) * 240
-                    const minElev = Math.min(...terrainProfile.map(t => t.elevation))
-                    const maxElev = Math.max(...terrainProfile.map(t => t.elevation))
-                    const y =
-                      70 -
-                      ((p.elevation - minElev) /
-                        Math.max(maxElev - minElev, 1)) *
-                        60
-                    return `${x},${y}`
-                  }).join(' ')
-                }
-              />
-
-              {scan?.candidates?.slice(0, 5).map((c, i) => {
-                const x = ((i + 1) / 6) * 240
-                return (
-                  <circle
-                    key={c.id}
-                    cx={x}
-                    cy="40"
-                    r="3"
-                    fill="#ef4444"
-                  />
-                )
-              })}
-            </svg>
-
-            <div className="grid grid-cols-3 gap-1 mt-2">
-              <div className="border border-[#111a14] p-2">
-                <p className="text-[#2a3a2e] text-[6px]">MIN</p>
-                <p className="text-[#c8c4ba] text-[9px]">
-                  {Math.min(...terrainProfile.map(p => p.elevation)).toFixed(1)}m
-                </p>
-              </div>
-
-              <div className="border border-[#111a14] p-2">
-                <p className="text-[#2a3a2e] text-[6px]">MAX</p>
-                <p className="text-[#c8c4ba] text-[9px]">
-                  {Math.max(...terrainProfile.map(p => p.elevation)).toFixed(1)}m
-                </p>
-              </div>
-
-              <div className="border border-[#111a14] p-2">
-                <p className="text-[#2a3a2e] text-[6px]">RELIEF</p>
-                <p className="text-[#c8c4ba] text-[9px]">
-                  {(
-                    Math.max(...terrainProfile.map(p => p.elevation)) -
-                    Math.min(...terrainProfile.map(p => p.elevation))
-                  ).toFixed(1)}m
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Actions */}
-        <div className="border-t border-[#1a2a1e] p-3 space-y-2">
-          <button
-            onClick={() => fetchIntel(coords.lat, coords.lng)}
-            disabled={intelLoading}
-            className="w-full py-2 border border-[#1a2a1e] hover:border-[#5b7c6f] text-[#5b7c6f] text-[9px] tracking-[0.2em] transition-colors disabled:opacity-40"
-          >
-            {intelLoading ? 'SCANNING...' : '↻ REFRESH INTEL'}
-          </button>
+        {/* Persistent report action — always one click away */}
+        <div className="border-t border-[#1a2a1e] p-3">
           <button
             onClick={() => {
               const aoiParam = aoiGeometry ? encodeURIComponent(JSON.stringify(aoiGeometry)) : ''
@@ -2159,7 +2340,7 @@ function ViewerInner() {
                 (overlays ? `&overlays=${overlays}` : '')
               )
             }}
-            className="w-full py-2 border border-[#D4AF37]/20 hover:border-[#D4AF37]/50 text-[#D4AF37] text-[9px] tracking-[0.2em] transition-colors"
+            className="w-full py-2.5 border border-[#D4AF37]/20 hover:border-[#D4AF37]/50 text-[#D4AF37] text-[9px] tracking-[0.2em] transition-colors"
           >
             → GENERATE REPORT
           </button>
