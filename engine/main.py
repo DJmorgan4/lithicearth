@@ -1824,12 +1824,12 @@ async def generate_maps(lat: float, lng: float, radius_m: float = 1000):
             cb = fig.colorbar(sc, ax=ax, fraction=0.03, pad=0.02)
             cb.ax.yaxis.set_tick_params(color="white")
             plt.setp(cb.ax.yaxis.get_ticklabels(), color="white")
-            cb.set_label("NDVI Signal", color="white", fontsize=7)
+            cb.set_label("Anomaly signal (bare=high)", color="white", fontsize=7)
             for c in candidates:
                 ax.annotate(c["id"], (c["lng"], c["lat"]),
                            color="white", fontsize=7, ha="center", va="bottom",
                            xytext=(0,6), textcoords="offset points")
-        ax.set_title(f"NDVI Signal Map — mean {ndvi_mean:.3f}", color="white", fontsize=9, pad=8)
+        ax.set_title(f"Vegetation Anomaly Signal — AOI NDVI mean {ndvi_mean:.3f}", color="white", fontsize=9, pad=8)
         ax.set_xlabel("Longitude", color="#555", fontsize=7)
         ax.set_ylabel("Latitude", color="#555", fontsize=7)
         ax.tick_params(colors="#555")

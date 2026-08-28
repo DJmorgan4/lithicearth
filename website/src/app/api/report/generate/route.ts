@@ -87,8 +87,14 @@ Close with an MSIGI SYNTHESIS — what the full multi-sensor picture indicates a
         signal: AbortSignal.timeout(55000)
       })
       const ad = await ar.json()
-      astraInterpretation = ad.response || ad.error || 'ASTRA unavailable'
-    } catch { astraInterpretation = 'ASTRA timeout' }
+      astraInterpretation = ad.response || ''
+      if (!astraInterpretation) console.error('[report] ASTRA returned no interpretation', ad?.error || '')
+    } catch (e) {
+      // Never surface an internal failure string as report body content.
+      // An empty interpretation makes the PDF omit the section entirely.
+      console.error('[report] ASTRA call failed:', e)
+      astraInterpretation = ''
+    }
 
     // 6. ASTRA learning — feed scan back into knowledge base
     try {

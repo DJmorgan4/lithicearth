@@ -197,9 +197,9 @@ export function MsigiPDF(props: MsigiPDFProps) {
             <View key={i} style={styles.tableRow}>
               <Text style={[styles.cell, { flex:0.5 }]}>{c.id}</Text>
               <Text style={[styles.cell, { flex:0.8, color:BLUE, fontFamily:'Helvetica-Bold' }]}>{(c.score*100).toFixed(0)}</Text>
-              <Text style={[styles.cellM, { flex:0.8 }]}>{c.dem_score?.toFixed(3)}</Text>
-              <Text style={[styles.cellM, { flex:0.8 }]}>{c.ndvi_score?.toFixed(3)}</Text>
-              <Text style={[styles.cellM, { flex:0.8 }]}>{c.sar_score?.toFixed(3)}</Text>
+              <Text style={[styles.cellM, { flex:0.8 }]}>{c.terrain_score?.toFixed(2) ?? '—'}</Text>
+              <Text style={[styles.cellM, { flex:0.8 }]}>{c.ndvi_signal?.toFixed(2) ?? '—'}</Text>
+              <Text style={[styles.cellM, { flex:0.8 }]}>{c.sar_signal?.toFixed(2) ?? '—'}</Text>
               <Text style={[styles.cellM, { flex:1.5, textAlign:'right' }]}>{c.lat?.toFixed(5)}, {c.lng?.toFixed(5)}</Text>
             </View>
           ))}
@@ -228,11 +228,12 @@ export function MsigiPDF(props: MsigiPDFProps) {
             )}
             {ndvi_image && (
               <>
-                <Text style={styles.h3}>NDVI Signal Map — Sentinel-2</Text>
+                <Text style={styles.h3}>Vegetation Anomaly Signal — Sentinel-2</Text>
                 <Text style={[styles.muted, { marginBottom:6 }]}>
-                  Normalized Difference Vegetation Index. RdYlGn colormap.
-                  Score composite: DEM×0.60 + S2_NDVI×0.25 + S1_SAR×0.15.
-                  Low NDVI (bare soil) correlates with elevated anomaly signal.
+                  Marker colour is the derived vegetation anomaly signal (0–1), not raw NDVI:
+                  bare or disturbed ground scores high, dense vegetation scores low.
+                  This signal contributes 25% of the composite candidate score
+                  (DEM×0.60 + S2_NDVI×0.25 + S1_SAR×0.15).
                 </Text>
                 <Image src={ndvi_image} style={{ width:'100%', height:220, borderRadius:4, marginBottom:10 }} />
               </>
@@ -262,7 +263,9 @@ export function MsigiPDF(props: MsigiPDFProps) {
         </Page>
       )}
 
-      {/* ASTRA INTERPRETATION */}
+      {/* ASTRA INTERPRETATION — omitted entirely when unavailable.
+           Never render an internal failure string as report body content. */}
+      {astra_interpretation?.trim() && (
       <Page size="LETTER" style={styles.page}>
         <Header title={location} date={today} />
         <View style={styles.body}>
@@ -278,6 +281,7 @@ export function MsigiPDF(props: MsigiPDFProps) {
         </View>
         <Footer id={reportId} />
       </Page>
+      )}
 
       {/* ANALYST NOTES + DISCLAIMER */}
       <Page size="LETTER" style={styles.page}>
