@@ -78,7 +78,7 @@ export interface MsigiPDFProps {
     spectral?: { ndvi_mean:number; cloud_cover:number; date:string }
     sar?: { platform:string; date:string; valid:boolean }
     muon_baseline?: { flux_m2_min:number; kp_index:number }
-    candidates?: { id:string; score:number; dem_score:number; ndvi_score:number; sar_score:number; lat:number; lng:number }[]
+    candidates?: { id:string; score:number; terrain_score?:number; ndvi_signal?:number; sar_signal?:number; lat:number; lng:number }[]
   }
   astra_interpretation: string
   map_image?: string
