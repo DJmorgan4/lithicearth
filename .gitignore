@@ -66,3 +66,9 @@ data/lidar/derived/
 data/lidar/las/
 data/inegi/cem/
 data/inegi/derived/
+
+# large local geodata
+data/lidar/
+data/tiles/
+data/tx/
+data/inegi/
